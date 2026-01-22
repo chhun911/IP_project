@@ -190,7 +190,7 @@ docker build -f api-gateway/Dockerfile -t aicookbook-api ./api-gateway
 ## 👥 Contributors
 
 - **chhun911** - [GitHub](https://github.com/chhun911)
-
+- **Prachgnar333**
 ## 📄 License
 
 This project is licensed under the MIT License.

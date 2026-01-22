@@ -1,15 +1,41 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: aicookbook
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
     ports:
       - "3001:3000"
+    env_file:
+      - ./api-gateway/.env
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=aicookbook
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     depends_on:
-      - order-worker
+      postgres:
+        condition: service_healthy
+      order-worker:
+        condition: service_started
     # Do not mount src here so built /app/dist isn't overwritten
     command: npm start
 
@@ -36,3 +62,4 @@ volumes:
   node_modules_api:
   node_modules_worker:
   node_modules_frontend:
+  postgres_data:

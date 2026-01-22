@@ -28,7 +28,7 @@ const handleSignUp = async () => {
   error.value = ''
 
   try {
-    const response = await fetch('http://localhost:3000/api/auth/signup', {
+    const response = await fetch('http://localhost:3001/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -1,7 +1,7 @@
 {
-  "name": "api-gateway",
+  "name": "backend",
   "version": "1.0.0",
-  "description": "API Gateway service with NestJS",
+  "description": "Backend service with NestJS",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

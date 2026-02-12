@@ -22,6 +22,16 @@
 
 /* semantic color variables for this project */
 :root {
+  /* Theme colors - can be overridden by settings */
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --border-color: #333333;
+  --accent-color: #ff6b6b;
+
+  /* Legacy variables */
   --color-background: #0f0f0f;
   --color-background-soft: #1a1a1a;
   --color-background-mute: #222222;
@@ -63,8 +73,8 @@ html, body {
   margin: 0;
   padding: 0;
   border: none;
-  background: #0f0f0f;
-  color: #e5e5e5;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   overflow: hidden;
 }

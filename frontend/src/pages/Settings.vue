@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 
 const props = defineProps<{
   user: { name: string; email: string }
@@ -15,8 +15,88 @@ const appearance = ref('System')
 const accentColor = ref('Default')
 const language = ref('Auto-detect')
 const notifications = ref('push')
-const archived = ref(0)
 const showDeleteConfirm = ref(false)
+const showDeleteAccountConfirm = ref(false)
+
+// Load settings from localStorage
+onMounted(() => {
+  const savedAppearance = localStorage.getItem('settings-appearance')
+  const savedAccentColor = localStorage.getItem('settings-accentColor')
+  const savedLanguage = localStorage.getItem('settings-language')
+  const savedNotifications = localStorage.getItem('settings-notifications')
+  
+  if (savedAppearance) appearance.value = savedAppearance
+  if (savedAccentColor) accentColor.value = savedAccentColor
+  if (savedLanguage) language.value = savedLanguage
+  if (savedNotifications) notifications.value = savedNotifications
+  
+  // Apply initial theme
+  applyTheme(appearance.value)
+  applyAccentColor(accentColor.value)
+})
+
+// Watch for appearance changes
+watch(appearance, (newValue) => {
+  localStorage.setItem('settings-appearance', newValue)
+  applyTheme(newValue)
+})
+
+// Watch for accent color changes
+watch(accentColor, (newValue) => {
+  localStorage.setItem('settings-accentColor', newValue)
+  applyAccentColor(newValue)
+})
+
+// Watch for language changes
+watch(language, (newValue) => {
+  localStorage.setItem('settings-language', newValue)
+})
+
+// Watch for notifications changes
+watch(notifications, (newValue) => {
+  localStorage.setItem('settings-notifications', newValue)
+})
+
+// Apply theme to document
+const applyTheme = (theme: string) => {
+  const root = document.documentElement
+  
+  if (theme === 'Light') {
+    root.style.setProperty('--bg-primary', '#ffffff')
+    root.style.setProperty('--bg-secondary', '#f5f5f5')
+    root.style.setProperty('--bg-tertiary', '#e0e0e0')
+    root.style.setProperty('--text-primary', '#000000')
+    root.style.setProperty('--text-secondary', '#666666')
+    root.style.setProperty('--border-color', '#cccccc')
+  } else if (theme === 'Dark') {
+    root.style.setProperty('--bg-primary', '#0f0f0f')
+    root.style.setProperty('--bg-secondary', '#1a1a1a')
+    root.style.setProperty('--bg-tertiary', '#2a2a2a')
+    root.style.setProperty('--text-primary', '#ffffff')
+    root.style.setProperty('--text-secondary', '#888888')
+    root.style.setProperty('--border-color', '#333333')
+  } else {
+    // System - detect preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    applyTheme(prefersDark ? 'Dark' : 'Light')
+  }
+}
+
+// Apply accent color
+const applyAccentColor = (color: string) => {
+  const root = document.documentElement
+  
+  switch (color) {
+    case 'Blue':
+      root.style.setProperty('--accent-color', '#007bff')
+      break
+    case 'Green':
+      root.style.setProperty('--accent-color', '#28a745')
+      break
+    default:
+      root.style.setProperty('--accent-color', '#ff6b6b')
+  }
+}
 
 const handleArchiveAll = () => {
   console.log('Archive all chats')
@@ -33,6 +113,16 @@ const handleDeleteAll = () => {
 const confirmDelete = () => {
   console.log('Delete all chats')
   showDeleteConfirm.value = false
+}
+
+const handleDeleteAccount = () => {
+  showDeleteAccountConfirm.value = true
+}
+
+const confirmDeleteAccount = () => {
+  console.log('Delete account')
+  showDeleteAccountConfirm.value = false
+  emit('logout')
 }
 
 const handleLogout = () => {
@@ -52,8 +142,8 @@ const handleLogout = () => {
           v-for="tab in ['General', 'Notifications', 'Data Controls', 'Security', 'Account']" 
           :key="tab"
           class="tab-btn"
-          :class="{ active: activeTab === tab.toLowerCase().replace(' ', '-') }"
-          @click="activeTab = tab.toLowerCase().replace(' ', '-')"
+          :class="{ active: activeTab === tab.toLowerCase().replace(/ /g, '-') }"
+          @click="activeTab = tab.toLowerCase().replace(/ /g, '-')"
         >
           {{ tab }}
         </button>
@@ -148,8 +238,8 @@ const handleLogout = () => {
             <p class="info-text">When you add a trusted device, it will be added here and can automatically receive device prompts for signing in.</p>
           </div>
 
-          <button class="btn-logout">Log out of this device</button>
-          <button class="btn-logout-all">Log out of all devices</button>
+          <button class="btn-logout" @click="handleLogout">Log out of this device</button>
+          <button class="btn-logout-all" @click="handleLogout">Log out of all devices</button>
         </div>
 
         <!-- Account Tab -->
@@ -168,7 +258,7 @@ const handleLogout = () => {
             <button class="btn-manage">Manage</button>
           </div>
 
-          <button class="btn-delete-account">Delete account</button>
+          <button class="btn-delete-account" @click="handleDeleteAccount">Delete account</button>
 
           <div class="user-info">
             <p><strong>Name</strong><br/>{{ user.name }}</p>
@@ -178,13 +268,24 @@ const handleLogout = () => {
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
+    <!-- Delete Chats Confirmation Modal -->
     <div v-if="showDeleteConfirm" class="modal-overlay">
       <div class="modal">
         <p>Are you sure you want to delete all chats? This action cannot be undone.</p>
         <div class="modal-buttons">
           <button class="btn-cancel" @click="showDeleteConfirm = false">Cancel</button>
           <button class="btn-confirm" @click="confirmDelete">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Account Confirmation Modal -->
+    <div v-if="showDeleteAccountConfirm" class="modal-overlay">
+      <div class="modal">
+        <p>Are you sure you want to delete your account? All your data will be permanently removed. This action cannot be undone.</p>
+        <div class="modal-buttons">
+          <button class="btn-cancel" @click="showDeleteAccountConfirm = false">Cancel</button>
+          <button class="btn-confirm" @click="confirmDeleteAccount">Delete Account</button>
         </div>
       </div>
     </div>
@@ -196,7 +297,7 @@ const handleLogout = () => {
   position: relative;
   flex: 1;
   min-height: 0;
-  background: #0f0f0f;
+  background: var(--bg-primary);
   display: flex;
   overflow: hidden;
 }
@@ -207,7 +308,7 @@ const handleLogout = () => {
   left: 20px;
   background: none;
   border: none;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 24px;
   cursor: pointer;
   z-index: 10;
@@ -223,9 +324,9 @@ const handleLogout = () => {
 
 .settings-sidebar {
   width: 200px;
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   padding: 20px;
-  border-right: 1px solid #333;
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -234,7 +335,7 @@ const handleLogout = () => {
 .tab-btn {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-secondary);
   text-align: left;
   padding: 10px 15px;
   border-radius: 6px;
@@ -244,12 +345,12 @@ const handleLogout = () => {
 }
 
 .tab-btn:hover {
-  background: #2a2a2a;
-  color: #ffffff;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .tab-btn.active {
-  background: #007bff;
+  background: var(--accent-color);
   color: #ffffff;
 }
 
@@ -262,7 +363,7 @@ const handleLogout = () => {
 .tab-content h2 {
   margin-top: 0;
   margin-bottom: 30px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .setting-group {
@@ -272,7 +373,7 @@ const handleLogout = () => {
 .setting-group label {
   display: block;
   margin-bottom: 8px;
-  color: #d0d0d0;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -281,16 +382,16 @@ const handleLogout = () => {
   width: 100%;
   max-width: 400px;
   padding: 10px;
-  background: #2a2a2a;
-  border: 1px solid #444;
-  color: #ffffff;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   border-radius: 6px;
   font-size: 14px;
 }
 
 .control-item {
   padding: 15px;
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 8px;
   margin-bottom: 12px;
 }
@@ -302,14 +403,14 @@ const handleLogout = () => {
 }
 
 .control-header span {
-  color: #d0d0d0;
+  color: var(--text-primary);
 }
 
 .btn-manage,
 .btn-action {
-  background: #2a2a2a;
-  border: 1px solid #444;
-  color: #ffffff;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -319,7 +420,7 @@ const handleLogout = () => {
 
 .btn-manage:hover,
 .btn-action:hover {
-  background: #3a3a3a;
+  background: var(--border-color);
 }
 
 .btn-danger {
@@ -343,21 +444,21 @@ const handleLogout = () => {
 
 .security-section h3 {
   margin: 0 0 8px 0;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 16px;
 }
 
 .info-text {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 13px;
   margin: 0;
 }
 
 .btn-logout,
 .btn-logout-all {
-  background: #2a2a2a;
-  border: 1px solid #444;
-  color: #ffffff;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   padding: 10px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -369,12 +470,12 @@ const handleLogout = () => {
 
 .btn-logout:hover,
 .btn-logout-all:hover {
-  background: #3a3a3a;
+  background: var(--border-color);
 }
 
 .account-info {
   padding: 15px;
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 8px;
   margin-bottom: 20px;
 }
@@ -388,11 +489,11 @@ const handleLogout = () => {
 
 .account-header h3 {
   margin: 0;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .usage {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 13px;
   margin: 0;
 }
@@ -402,14 +503,14 @@ const handleLogout = () => {
   justify-content: space-between;
   align-items: center;
   padding: 15px;
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 8px;
   margin-bottom: 20px;
 }
 
 .account-section h3 {
   margin: 0;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .btn-delete-account {
@@ -429,7 +530,7 @@ const handleLogout = () => {
 }
 
 .user-info {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.8;
 }
@@ -439,7 +540,7 @@ const handleLogout = () => {
 }
 
 .user-info strong {
-  color: #d0d0d0;
+  color: var(--text-primary);
 }
 
 .modal-overlay {
@@ -456,7 +557,7 @@ const handleLogout = () => {
 }
 
 .modal {
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 8px;
   padding: 30px;
   max-width: 400px;
@@ -464,7 +565,7 @@ const handleLogout = () => {
 }
 
 .modal p {
-  color: #d0d0d0;
+  color: var(--text-primary);
   margin-bottom: 20px;
 }
 
@@ -485,12 +586,12 @@ const handleLogout = () => {
 }
 
 .btn-cancel {
-  background: #2a2a2a;
-  color: #ffffff;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .btn-cancel:hover {
-  background: #3a3a3a;
+  background: var(--border-color);
 }
 
 .btn-confirm {

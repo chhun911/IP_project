@@ -15,6 +15,18 @@ const user = ref<{ name: string; email: string } | null>(null)
 const goToSignUp = () => currentPage.value = 'signup'
 const goToLogin = () => currentPage.value = 'login'
 
+// Reset CSS variables to dark defaults (for login/signup pages)
+const resetThemeToDefaults = () => {
+  const root = document.documentElement
+  root.style.setProperty('--bg-primary', '#0f0f0f')
+  root.style.setProperty('--bg-secondary', '#1a1a1a')
+  root.style.setProperty('--bg-tertiary', '#2a2a2a')
+  root.style.setProperty('--text-primary', '#ffffff')
+  root.style.setProperty('--text-secondary', '#888888')
+  root.style.setProperty('--border-color', '#333333')
+  root.style.setProperty('--accent-color', '#ff6b6b')
+}
+
 const handleLoginSuccess = (userData: { name: string; email: string }) => {
   user.value = userData
   isAuthenticated.value = true
@@ -28,6 +40,7 @@ const handleSignUpSuccess = (userData: { name: string; email: string }) => {
 }
 
 const handleLogout = () => {
+  resetThemeToDefaults()
   isAuthenticated.value = false
   user.value = null
   currentPage.value = 'login'
@@ -88,8 +101,8 @@ const handleLogout = () => {
 .app {
   width: 100%;
   height: 100vh;
-  background: #0f0f0f;
-  color: #ffffff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   display: flex;
   flex-direction: column;
@@ -100,31 +113,31 @@ const handleLogout = () => {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #333;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   flex-wrap: wrap;
 }
 
 .nav-btn {
   padding: 8px 16px;
-  border: 1px solid #333;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   background: transparent;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .nav-btn:hover {
-  border-color: #555;
-  color: #fff;
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .nav-btn.active {
-  border-color: #ff6b6b;
+  border-color: var(--accent-color);
   background: rgba(255, 107, 107, 0.1);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .nav-btn.logout {

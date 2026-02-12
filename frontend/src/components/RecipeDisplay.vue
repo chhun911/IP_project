@@ -73,7 +73,7 @@ defineProps<{
 
 <style scoped>
 .recipe-display {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
   border-radius: 8px;
   padding: 16px;
   margin-top: 12px;
@@ -86,14 +86,14 @@ defineProps<{
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 12px;
 }
 
 .recipe-header h2 {
   margin: 0;
   font-size: 18px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .servings {
@@ -121,7 +121,7 @@ defineProps<{
 h3 {
   margin: 0 0 8px 0;
   font-size: 14px;
-  color: #ffffff;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -144,7 +144,7 @@ h3 {
 }
 
 .ingredient-name {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .ingredient-amount {

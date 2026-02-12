@@ -48,17 +48,9 @@ const sortedSessions = computed(() =>
 // Generate unique ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-// Create new chat session
+// Create new chat (clears the current chat without adding to history)
 const createNewChat = () => {
-  const newSession: ChatSession = {
-    id: generateId(),
-    title: 'New Chat',
-    messages: [],
-    createdAt: new Date(),
-    updatedAt: new Date()
-  }
-  chatSessions.value.push(newSession)
-  currentSessionId.value = newSession.id
+  currentSessionId.value = null
   messages.value = []
 }
 
@@ -107,9 +99,17 @@ watch(messages, (newMessages) => {
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
 
-  // Create session if none exists
+  // Create session if none exists (only when user sends first message)
   if (!currentSessionId.value) {
-    createNewChat()
+    const newSession: ChatSession = {
+      id: generateId(),
+      title: 'New Chat',
+      messages: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+    chatSessions.value.push(newSession)
+    currentSessionId.value = newSession.id
   }
 
   // Add user message
@@ -351,7 +351,7 @@ onMounted(() => {
   display: flex;
   flex: 1;
   min-height: 0;
-  background: #0f0f0f;
+  background: var(--bg-primary);
   position: relative;
   overflow: hidden;
 }
@@ -370,8 +370,8 @@ onMounted(() => {
 /* Sidebar Styles */
 .sidebar {
   width: 260px;
-  background: #171717;
-  border-right: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--bg-tertiary);
   display: flex;
   flex-direction: column;
   transition: width 0.2s ease;
@@ -405,7 +405,7 @@ onMounted(() => {
 }
 
 .sidebar-logo:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .new-chat-btn {
@@ -416,9 +416,9 @@ onMounted(() => {
   gap: 10px;
   padding: 10px 12px;
   background: transparent;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -426,7 +426,7 @@ onMounted(() => {
 }
 
 .new-chat-btn:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .new-chat-btn .icon {
@@ -442,15 +442,15 @@ onMounted(() => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #888;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 }
 
 .toggle-sidebar-btn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .sidebar-content {
@@ -469,7 +469,7 @@ onMounted(() => {
 }
 
 .sidebar-content::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--border-color);
   border-radius: 3px;
 }
 
@@ -489,20 +489,20 @@ onMounted(() => {
   cursor: pointer;
   transition: background 0.2s;
   position: relative;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .chat-item:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .chat-item.active {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .chat-icon {
   flex-shrink: 0;
-  color: #888;
+  color: var(--text-secondary);
 }
 
 .chat-title {
@@ -522,7 +522,7 @@ onMounted(() => {
   padding: 4px;
   border-radius: 4px;
   transition: all 0.2s;
-  color: #888;
+  color: var(--text-secondary);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -534,7 +534,7 @@ onMounted(() => {
 }
 
 .delete-btn:hover {
-  background: #3a3a3a;
+  background: var(--border-color);
   color: #ff6b6b;
 }
 
@@ -562,24 +562,24 @@ onMounted(() => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #888;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .icon-btn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .icon-btn.active {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .sidebar-footer {
   padding: 12px;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--bg-tertiary);
 }
 
 .user-info {
@@ -593,7 +593,7 @@ onMounted(() => {
 }
 
 .user-info:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .user-avatar {
@@ -606,7 +606,7 @@ onMounted(() => {
 
 .user-name {
   font-size: 13px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -625,8 +625,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-tertiary);
 }
 
 .header-left {
@@ -650,14 +650,14 @@ onMounted(() => {
 }
 
 .mobile-menu-btn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .logo {
   font-size: 18px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .header-right {
@@ -668,7 +668,7 @@ onMounted(() => {
 .btn-icon {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 18px;
   cursor: pointer;
   padding: 8px;
@@ -677,8 +677,8 @@ onMounted(() => {
 }
 
 .btn-icon:hover {
-  background: #2a2a2a;
-  color: #fff;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* Empty State */
@@ -699,12 +699,12 @@ onMounted(() => {
 
 .empty-state h2 {
   margin: 0 0 8px;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 24px;
 }
 
 .empty-state p {
-  color: #888;
+  color: var(--text-secondary);
   margin: 0 0 32px;
 }
 
@@ -718,10 +718,10 @@ onMounted(() => {
 
 .suggestions button {
   padding: 14px 20px;
-  background: #1a1a1a;
-  border: 1px solid #3a3a3a;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  color: #ccc;
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   text-align: left;
@@ -729,9 +729,9 @@ onMounted(() => {
 }
 
 .suggestions button:hover {
-  background: #2a2a2a;
-  border-color: #4a4a4a;
-  color: #fff;
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 
 /* Messages */
@@ -770,7 +770,7 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -791,7 +791,7 @@ onMounted(() => {
 }
 
 .message-content {
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   padding: 14px 18px;
   border-radius: 12px;
 }
@@ -804,7 +804,7 @@ onMounted(() => {
   margin: 0;
   font-size: 15px;
   line-height: 1.6;
-  color: #e5e5e5;
+  color: var(--text-primary);
   white-space: pre-wrap;
 }
 
@@ -852,14 +852,14 @@ onMounted(() => {
   position: sticky;
   bottom: 0;
   padding: 20px;
-  background: linear-gradient(transparent, #0f0f0f 20%);
+  background: linear-gradient(transparent, var(--bg-primary) 20%);
 }
 
 .input-wrapper {
   display: flex;
   gap: 12px;
-  background: #1a1a1a;
-  border: 1px solid #3a3a3a;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   padding: 8px 8px 8px 20px;
   max-width: 800px;
@@ -875,13 +875,13 @@ onMounted(() => {
   flex: 1;
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 15px;
   outline: none;
 }
 
 .chat-input-area input::placeholder {
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .btn-send {

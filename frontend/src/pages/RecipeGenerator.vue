@@ -546,7 +546,7 @@ onMounted(() => {
   display: flex;
   flex: 1;
   min-height: 0;
-  background: #0f0f0f;
+  background: var(--bg-primary);
   position: relative;
   overflow: hidden;
 }
@@ -565,8 +565,8 @@ onMounted(() => {
 /* Sidebar Styles */
 .sidebar {
   width: 260px;
-  background: #171717;
-  border-right: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--bg-tertiary);
   display: flex;
   flex-direction: column;
   transition: width 0.2s ease;
@@ -600,7 +600,7 @@ onMounted(() => {
 }
 
 .sidebar-logo:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .new-recipe-btn {
@@ -611,9 +611,9 @@ onMounted(() => {
   gap: 10px;
   padding: 10px 12px;
   background: transparent;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -621,7 +621,7 @@ onMounted(() => {
 }
 
 .new-recipe-btn:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .new-recipe-btn .icon {
@@ -637,15 +637,15 @@ onMounted(() => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #888;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 }
 
 .toggle-sidebar-btn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .sidebar-content {
@@ -664,7 +664,7 @@ onMounted(() => {
 }
 
 .sidebar-content::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--border-color);
   border-radius: 3px;
 }
 
@@ -684,20 +684,20 @@ onMounted(() => {
   cursor: pointer;
   transition: background 0.2s;
   position: relative;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .recipe-item:hover {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .recipe-item.active {
-  background: #2a2a2a;
+  background: var(--bg-tertiary);
 }
 
 .recipe-icon {
   flex-shrink: 0;
-  color: #888;
+  color: var(--text-secondary);
 }
 
 .recipe-info {
@@ -728,7 +728,7 @@ onMounted(() => {
   padding: 4px;
   border-radius: 4px;
   transition: all 0.2s;
-  color: #888;
+  color: var(--text-secondary);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -740,7 +740,7 @@ onMounted(() => {
 }
 
 .delete-btn:hover {
-  background: #3a3a3a;
+  background: var(--border-color);
   color: #ff6b6b;
 }
 
@@ -768,19 +768,19 @@ onMounted(() => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #888;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .icon-btn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .icon-btn.active {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* Main Content */
@@ -796,8 +796,8 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 20px 24px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-tertiary);
 }
 
 .mobile-menu-btn {
@@ -809,15 +809,15 @@ onMounted(() => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #888;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 }
 
 .mobile-menu-btn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .recipe-header-title {
@@ -834,7 +834,7 @@ onMounted(() => {
   max-width: 900px;
   margin: 0 auto;
   padding: 24px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 /* Mode Toggle */
@@ -847,29 +847,29 @@ onMounted(() => {
 .mode-btn {
   flex: 1;
   padding: 12px 20px;
-  border: 2px solid #333;
+  border: 2px solid var(--border-color);
   border-radius: 12px;
-  background: #1a1a1a;
-  color: #888;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .mode-btn:hover {
-  border-color: #444;
-  color: #fff;
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 
 .mode-btn.active {
-  border-color: #ff6b6b;
+  border-color: var(--accent-color);
   background: linear-gradient(135deg, rgba(255, 107, 107, 0.1), rgba(254, 202, 87, 0.1));
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* Input Section */
 .input-section {
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
@@ -896,10 +896,10 @@ onMounted(() => {
 .input-group textarea {
   width: 100%;
   padding: 14px 16px;
-  border: 2px solid #333;
+  border: 2px solid var(--border-color);
   border-radius: 12px;
-  background: #0f0f0f;
-  color: #fff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 15px;
   transition: border-color 0.2s;
   box-sizing: border-box;
@@ -1043,13 +1043,13 @@ onMounted(() => {
 
 /* Recipe Result */
 .recipe-result {
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 16px;
   padding: 24px;
 }
 
 .recipe-header {
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 16px;
   margin-bottom: 24px;
 }
@@ -1057,7 +1057,7 @@ onMounted(() => {
 .recipe-header h2 {
   margin: 0 0 12px;
   font-size: 1.5rem;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .recipe-meta {
@@ -1067,7 +1067,7 @@ onMounted(() => {
 }
 
 .meta-item {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -1092,7 +1092,7 @@ onMounted(() => {
 .tips-section h3 {
   margin: 0 0 16px;
   font-size: 1.1rem;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .ingredients-grid {
@@ -1103,7 +1103,7 @@ onMounted(() => {
 }
 
 .ingredient-card {
-  background: #0f0f0f;
+  background: var(--bg-primary);
   border-radius: 12px;
   overflow: hidden;
   transition: transform 0.2s;
@@ -1143,25 +1143,25 @@ onMounted(() => {
 .ingredient-name {
   display: block;
   font-weight: 500;
-  color: #fff;
+  color: var(--text-primary);
   margin-bottom: 4px;
   font-size: 14px;
 }
 
 .ingredient-amount {
   display: block;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
 .attribution {
   display: block;
   padding: 8px 12px;
-  background: #1a1a1a;
-  color: #666;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
   font-size: 10px;
   text-decoration: none;
-  border-top: 1px solid #222;
+  border-top: 1px solid var(--bg-tertiary);
 }
 
 .attribution:hover {
@@ -1184,7 +1184,7 @@ onMounted(() => {
   display: flex;
   gap: 16px;
   padding: 16px;
-  background: #0f0f0f;
+  background: var(--bg-primary);
   border-radius: 12px;
   margin-bottom: 12px;
 }
@@ -1233,10 +1233,10 @@ onMounted(() => {
 .generate-another-btn {
   width: 100%;
   padding: 14px;
-  border: 2px solid #333;
+  border: 2px solid var(--border-color);
   border-radius: 12px;
   background: transparent;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 15px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1289,7 +1289,7 @@ onMounted(() => {
 }
 
 .image-modal {
-  background: #1a1a1a;
+  background: var(--bg-secondary);
   border-radius: 16px;
   width: 100%;
   max-width: 720px;
@@ -1304,13 +1304,13 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .image-modal-header h3 {
   margin: 0;
   font-size: 16px;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .image-modal-close {
@@ -1357,7 +1357,7 @@ onMounted(() => {
 }
 
 .image-modal-item {
-  background: #0f0f0f;
+  background: var(--bg-primary);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;

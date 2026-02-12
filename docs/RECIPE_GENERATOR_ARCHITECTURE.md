@@ -13,7 +13,7 @@
 │  │  │  • Form submission                                       │    │   │
 │  │  │  • Recipe display with ingredient images                 │    │   │
 │  │  │  • Loading & error states                                │    │   │
-│  │  │  • Unsplash attribution display                          │    │   │
+│  │  │  • Pixabay attribution display                           │    │   │
 │  │  └─────────────────────────────────────────────────────────┘    │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────┬────────────────────────────────────┘
@@ -38,7 +38,7 @@
 │  │ • Build prompts     │              │ • Normalize ingredient     │   │
 │  │ • Call GPT-4o-mini  │              │   names                    │   │
 │  │ • Validate JSON     │              │ • Check cache first        │   │
-│  │ • Return recipe     │              │ • Fetch from Unsplash      │   │
+│  │ • Return recipe     │              │ • Fetch from Pixabay       │   │
 │  │   structure         │              │ • Store in cache           │   │
 │  └──────────┬──────────┘              │ • Rate limiting            │   │
 │             │                         └─────────────┬──────────────┘   │
@@ -47,7 +47,7 @@
               │                                       │
               ▼                                       ▼
 ┌─────────────────────┐                 ┌───────────────────────────────┐
-│     OpenAI API      │                 │        Unsplash API           │
+│     OpenAI API      │                 │        Pixabay API            │
 │   (gpt-4o-mini)     │                 │    (Image Search)             │
 └─────────────────────┘                 └───────────────────────────────┘
                                                       │
@@ -81,7 +81,7 @@ Ingredient Name → Normalize → Check PostgreSQL Cache
                      │                             │
                 Cache Hit                     Cache Miss
                      │                             │
-              Return cached                 Call Unsplash API
+              Return cached                 Call Pixabay API
               image + attribution                  │
                                            Store in cache
                                                    │
@@ -120,10 +120,10 @@ api-gateway/
 |---------------------------|--------------|---------------------|-----------------------------------|
 | id                        | SERIAL       | PRIMARY KEY         | Auto-increment ID                 |
 | ingredient_name_normalized| VARCHAR(255) | UNIQUE, NOT NULL    | Normalized ingredient name        |
-| image_url                 | TEXT         | NOT NULL            | Unsplash image URL               |
-| attribution_text          | VARCHAR(500) | NOT NULL            | "Photo by X on Unsplash"         |
+| image_url                 | TEXT         | NOT NULL            | Pixabay image URL                |
+| attribution_text          | VARCHAR(500) | NOT NULL            | "Photo by X on Pixabay"          |
 | attribution_link          | TEXT         | NOT NULL            | Photographer profile URL          |
-| source                    | VARCHAR(50)  | NOT NULL, DEFAULT   | 'unsplash' or 'placeholder'      |
+| source                    | VARCHAR(50)  | NOT NULL, DEFAULT   | 'pixabay' or 'placeholder'       |
 | created_at                | TIMESTAMP    | DEFAULT NOW()       | Record creation time              |
 | updated_at                | TIMESTAMP    | DEFAULT NOW()       | Last update time                  |
 
@@ -153,11 +153,11 @@ api-gateway/
       "name": "chicken breast",
       "amount": "4",
       "unit": "pieces",
-      "imageUrl": "https://images.unsplash.com/...",
-      "imageSource": "unsplash",
+      "imageUrl": "https://pixabay.com/get/...",
+      "imageSource": "pixabay",
       "attribution": {
-        "text": "Photo by John Doe on Unsplash",
-        "link": "https://unsplash.com/@johndoe?utm_source=aicookbook&utm_medium=referral"
+        "text": "Photo by John Doe on Pixabay",
+        "link": "https://pixabay.com/en/blossom-bloom-flower-195893/"
       }
     }
   ],
@@ -180,7 +180,7 @@ api-gateway/
 |-----------------------|--------------------------------------|----------|
 | `OPENAI_API_KEY`      | OpenAI API key for recipe generation | Yes      |
 | `OPENAI_MODEL`        | OpenAI model (default: gpt-4o-mini)  | No       |
-| `UNSPLASH_ACCESS_KEY` | Unsplash API access key              | Yes      |
+| `PIXABAY_API_KEY`     | Pixabay API key                      | Yes      |
 | `POSTGRES_HOST`       | PostgreSQL host                      | Yes      |
 | `POSTGRES_PORT`       | PostgreSQL port (default: 5432)      | No       |
 | `POSTGRES_DB`         | Database name                        | Yes      |
@@ -197,8 +197,8 @@ api-gateway/
 - **Rate limiting:** Implement request queuing if needed
 - **Cost estimate:** ~$0.01-0.02 per recipe generation
 
-### Unsplash
-- **Free tier:** 50 requests/hour
+### Pixabay
+- **Free tier:** ~5000 requests/hour
 - **Implementation:**
   - In-memory rate limit counter (resets hourly)
   - Cache-first strategy (PostgreSQL)
@@ -212,7 +212,7 @@ api-gateway/
    - Example: "Fresh Organic Chopped Tomatoes" → "tomatoes"
 
 2. **Cache benefits:**
-   - Reduces Unsplash API calls by 80-90%
+   - Reduces Pixabay API calls by 80-90%
    - Common ingredients (chicken, garlic, onion) cached quickly
    - Persistent storage survives restarts
 

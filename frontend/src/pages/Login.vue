@@ -92,7 +92,7 @@ const handleGoogleLogin = () => {
       </button>
 
       <div class="footer">
-        <span>Do not have Login yet?</span>
+        <span>Do not have an account yet?</span>
         <a href="#" @click.prevent="$emit('signup')">Sign up</a>
       </div>
     </div>
@@ -104,9 +104,10 @@ const handleGoogleLogin = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   background: #0f0f0f;
-  padding: 20px;
+  padding: 0;
 }
 
 .login-box {
@@ -154,6 +155,7 @@ h1 {
   background: #ffffff;
   font-size: 14px;
   color: #000;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {

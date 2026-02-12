@@ -29,7 +29,7 @@ export interface RecipeIngredient {
   amount: string;
   unit: string;
   imageUrl: string;
-  imageSource: 'unsplash' | 'placeholder';
+  imageSource: 'pixabay' | 'placeholder' | 'user_override';
   attribution: IngredientAttribution;
 }
 

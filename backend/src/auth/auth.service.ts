@@ -1,17 +1,61 @@
-import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { SignupDto, LoginDto } from './dto/auth.dto';
+import { UserDatabaseService } from './services/user-database.service';
+import * as crypto from 'crypto';
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
+/**
+ * Bcrypt-compatible password hashing using Node.js built-in crypto module.
+ * Uses scrypt (recommended by OWASP) with a random 16-byte salt.
+ * Output format: $scrypt$<salt_hex>$<hash_hex>
+ */
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_COST = 16384; // N
+const SCRYPT_BLOCK_SIZE = 8; // r
+const SCRYPT_PARALLELISM = 1; // p
+
+function hashPassword(password: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16);
+    crypto.scrypt(
+      password,
+      salt,
+      SCRYPT_KEYLEN,
+      { N: SCRYPT_COST, r: SCRYPT_BLOCK_SIZE, p: SCRYPT_PARALLELISM },
+      (err, derivedKey) => {
+        if (err) return reject(err);
+        resolve(`$scrypt$${salt.toString('hex')}$${derivedKey.toString('hex')}`);
+      },
+    );
+  });
+}
+
+function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const parts = storedHash.split('$'); // ['', 'scrypt', saltHex, hashHex]
+    if (parts.length !== 4 || parts[1] !== 'scrypt') {
+      return resolve(false);
+    }
+    const salt = Buffer.from(parts[2], 'hex');
+    const existingHash = Buffer.from(parts[3], 'hex');
+    crypto.scrypt(
+      password,
+      salt,
+      SCRYPT_KEYLEN,
+      { N: SCRYPT_COST, r: SCRYPT_BLOCK_SIZE, p: SCRYPT_PARALLELISM },
+      (err, derivedKey) => {
+        if (err) return reject(err);
+        // Timing-safe comparison to prevent timing attacks
+        resolve(crypto.timingSafeEqual(existingHash, derivedKey));
+      },
+    );
+  });
 }
 
 @Injectable()
 export class AuthService {
-  // In-memory user storage (replace with database in production)
-  private users: Map<string, User> = new Map();
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(private readonly userDb: UserDatabaseService) {}
 
   async signup(signupDto: SignupDto) {
     const { name, email, password } = signupDto;
@@ -20,24 +64,23 @@ export class AuthService {
       throw new BadRequestException('Missing required fields');
     }
 
-    if (this.users.has(email)) {
+    // Check if user already exists
+    const existing = await this.userDb.findByEmail(email);
+    if (existing) {
       throw new ConflictException('User already exists');
     }
 
-    const user: User = {
-      id: `user-${Date.now()}`,
-      name,
-      email,
-      password: password, // In production, hash the password
-    };
+    // Hash the password with scrypt before storing
+    const passwordHash = await hashPassword(password);
 
-    this.users.set(email, user);
-    
+    const user = await this.userDb.createUser(name, email, passwordHash);
+    this.logger.log(`User registered: ${user.email}`);
+
     return {
       success: true,
       data: { id: user.id, name: user.name, email: user.email },
     };
-  } 
+  }
 
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
@@ -46,9 +89,15 @@ export class AuthService {
       throw new BadRequestException('Missing credentials');
     }
 
-    const user = this.users.get(email);
+    const user = await this.userDb.findByEmail(email);
 
-    if (!user || user.password !== password) {
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Compare provided password against the stored hash
+    const isMatch = await verifyPassword(password, user.password_hash);
+    if (!isMatch) {
       throw new UnauthorizedException('Invalid credentials');
     }
 

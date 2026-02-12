@@ -42,7 +42,7 @@ const handleSignUp = async () => {
       throw new Error('Sign up failed')
     }
 
-    const data = await response.json()
+    await response.json()
     emit('signup', { name: name.value, email: email.value })
   } catch (err) {
     error.value = 'Failed to create account'
@@ -124,9 +124,10 @@ const handleSignUp = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   background: #0f0f0f;
-  padding: 20px;
+  padding: 0;
 }
 
 .signup-box {
@@ -174,6 +175,7 @@ h1 {
   background: #ffffff;
   font-size: 14px;
   color: #000;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {

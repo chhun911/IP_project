@@ -22,9 +22,9 @@
 
 /* semantic color variables for this project */
 :root {
-  --color-background: var(--vt-c-white);
-  --color-background-soft: var(--vt-c-white-soft);
-  --color-background-mute: var(--vt-c-white-mute);
+  --color-background: #0f0f0f;
+  --color-background-soft: #1a1a1a;
+  --color-background-mute: #222222;
 
   --color-border: var(--vt-c-divider-light-2);
   --color-border-hover: var(--vt-c-divider-light-1);
@@ -57,22 +57,25 @@
   padding: 0;
 }
 
-body {
-  display: flex;
-  place-items: center;
-  place-content: center;
-  min-width: 320px;
-  min-height: 100vh;
-  background: var(--color-background);
-  color: var(--color-text);
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: #0f0f0f;
+  color: #e5e5e5;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
 }
 
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
 }
 
 button {

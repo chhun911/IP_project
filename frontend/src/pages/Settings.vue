@@ -194,9 +194,11 @@ const handleLogout = () => {
 <style scoped>
 .settings-container {
   position: relative;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   background: #0f0f0f;
   display: flex;
+  overflow: hidden;
 }
 
 .btn-back {
@@ -214,7 +216,9 @@ const handleLogout = () => {
 .settings-panel {
   display: flex;
   width: 100%;
+  flex: 1;
   margin-top: 60px;
+  min-height: 0;
 }
 
 .settings-sidebar {

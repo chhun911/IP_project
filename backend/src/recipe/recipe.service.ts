@@ -3,6 +3,7 @@ import { OpenAIService } from './services/openai.service';
 import { IngredientImageService } from './services/ingredient-image.service';
 import { DatabaseService } from './services/database.service';
 import { GenerateRecipeDto, GeneratedRecipe } from './dto/recipe.dto';
+import { SearchAlternativesResult, IngredientImageCache } from './interfaces/ingredient-image.interface';
 
 @Injectable()
 export class RecipeService {
@@ -29,7 +30,7 @@ export class RecipeService {
 
     this.logger.log(`Recipe generated: ${recipeData.title}`);
 
-    // Step 2: Resolve ingredient images with caching
+    // Step 2: Resolve ingredient images with scoring + caching
     const { ingredients, warnings: imageWarnings } = 
       await this.ingredientImageService.resolveIngredientImages(recipeData.ingredients);
 
@@ -54,5 +55,31 @@ export class RecipeService {
   async clearImageCache(): Promise<number> {
     this.logger.log('Clearing all cached ingredient images');
     return this.databaseService.clearAllIngredientImages();
+  }
+
+  /**
+   * Search alternative images for a specific ingredient (scored & ranked)
+   */
+  async searchAlternativeImages(ingredientName: string): Promise<SearchAlternativesResult> {
+    this.logger.log(`Searching alternatives for: ${ingredientName}`);
+    return this.ingredientImageService.searchAlternativeImages(ingredientName);
+  }
+
+  /**
+   * User override: manually set the image for an ingredient
+   */
+  async overrideIngredientImage(
+    ingredientName: string,
+    imageUrl: string,
+    attributionText: string,
+    attributionLink: string,
+  ): Promise<IngredientImageCache> {
+    this.logger.log(`Overriding image for: ${ingredientName}`);
+    return this.ingredientImageService.overrideIngredientImage(
+      ingredientName,
+      imageUrl,
+      attributionText,
+      attributionLink,
+    );
   }
 }

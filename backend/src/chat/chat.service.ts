@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ChatDto } from './dto/chat.dto';
+import { DeepSeekService } from './services/deepseek.service';
 
 export interface Recipe {
   title: string;
@@ -12,7 +13,9 @@ export interface Recipe {
 
 @Injectable()
 export class ChatService {
-  // Mock recipe database
+  constructor(private readonly deepSeekService: DeepSeekService) {}
+
+  // Mock recipe database (kept for fallback)
   private recipes: Record<string, Recipe> = {
     'spaghetti bolognese': {
       title: '🍝 Spaghetti Bolognese (Serves 2-3)',
@@ -85,34 +88,45 @@ export class ChatService {
       throw new BadRequestException('Message required');
     }
 
-    // Simple recipe matching
-    const messageLC = message.toLowerCase();
-    let recipe: Recipe | null = null;
-    let response = '';
+    try {
+      // Use DeepSeek AI to process the chat message
+      const aiResponse = await this.deepSeekService.chat(message);
 
-    for (const [key, value] of Object.entries(this.recipes)) {
-      if (messageLC.includes(key)) {
-        recipe = value;
-        response = `Here's a delicious recipe for ${value.title}!`;
-        break;
+      return {
+        success: true,
+        response: aiResponse.response,
+        recipe: null, // AI will include recipe info in the response text
+      };
+    } catch (error) {
+      // Fallback to simple recipe matching if AI fails
+      const messageLC = message.toLowerCase();
+      let recipe: Recipe | null = null;
+      let response = '';
+
+      for (const [key, value] of Object.entries(this.recipes)) {
+        if (messageLC.includes(key)) {
+          recipe = value;
+          response = `Here's a delicious recipe for ${value.title}!`;
+          break;
+        }
       }
-    }
 
-    if (!recipe) {
-      // Check for ingredient-based queries
-      if (messageLC.includes('egg') && messageLC.includes('tomato')) {
-        recipe = this.recipes['tomato onion scrambled eggs'];
-        response = `From Eggs + Tomatoes + Onion, you can make:\n\n1) Tomato & Onion Scrambled Eggs - Soft, quick, and filling\n2) Tomato & Onion Omelet - Add salt and pepper for them\n3) Egg, Tomato & Onion Stir Fry - Great for fried rice\n4) Simple Tomato Egg Pancake - Try it like a flat omelet\n5) Egg, Tomato Egg Soup (very basic) - Soft and hearty omelet`;
-      } else {
-        response =
-          'I can help you find recipes! Try asking for specific dishes like "Spaghetti Bolognese" or ingredients you have.';
+      if (!recipe) {
+        // Check for ingredient-based queries
+        if (messageLC.includes('egg') && messageLC.includes('tomato')) {
+          recipe = this.recipes['tomato onion scrambled eggs'];
+          response = `From Eggs + Tomatoes + Onion, you can make:\n\n1) Tomato & Onion Scrambled Eggs - Soft, quick, and filling\n2) Tomato & Onion Omelet - Add salt and pepper for them\n3) Egg, Tomato & Onion Stir Fry - Great for fried rice\n4) Simple Tomato Egg Pancake - Try it like a flat omelet\n5) Egg, Tomato Egg Soup (very basic) - Soft and hearty omelet`;
+        } else {
+          response =
+            'I can help you find recipes! Try asking for specific dishes like "Spaghetti Bolognese" or ingredients you have.';
+        }
       }
-    }
 
-    return {
-      success: true,
-      response,
-      recipe: recipe || null,
-    };
+      return {
+        success: true,
+        response,
+        recipe: recipe || null,
+      };
+    }
   }
 }

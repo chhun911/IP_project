@@ -68,14 +68,14 @@ const handleLogout = () => {
       </nav>
 
       <Chat 
-        v-if="currentPage === 'chat'" 
+        v-show="currentPage === 'chat'" 
         :user="user!" 
         @settings="currentPage = 'settings'"
         @logout="handleLogout"
       />
-      <RecipeGenerator v-if="currentPage === 'recipes'" />
+      <RecipeGenerator v-show="currentPage === 'recipes'" />
       <Settings 
-        v-if="currentPage === 'settings'" 
+        v-show="currentPage === 'settings'" 
         :user="user!" 
         @back="currentPage = 'chat'"
         @logout="handleLogout"
@@ -87,10 +87,13 @@ const handleLogout = () => {
 <style scoped>
 .app {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   background: #0f0f0f;
   color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-nav {

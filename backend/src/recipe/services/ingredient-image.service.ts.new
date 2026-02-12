@@ -1,0 +1,395 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { DatabaseService } from './database.service';
+import { ImageScoringService } from './image-scoring.service';
+import {
+  IngredientImageCache,
+  PixabaySearchResponse,
+  ScoredPixabayHit,
+} from '../interfaces/ingredient-image.interface';
+import { RecipeIngredient, IngredientAttribution } from '../dto/recipe.dto';
+
+@Injectable()
+export class IngredientImageService {
+  private readonly logger = new Logger(IngredientImageService.name);
+  private readonly pixabayApiKey = process.env.PIXABAY_API_KEY;
+
+  // Rate limiting: Pixabay allows ~5000 requests/hour, but we keep a reasonable limit
+  private requestCount = 0;
+  private requestWindowStart = Date.now();
+  private readonly maxRequestsPerHour = 4000;
+
+  // Number of candidate images to fetch for scoring
+  private readonly candidateCount = 50;
+
+  // Simple descriptors to remove from ingredient names for cleaner normalization
+  private readonly descriptorsToRemove = [
+    'organic',
+    'optional',
+    'for garnish',
+    'to taste',
+    'as needed',
+    'large',
+    'medium',
+    'small',
+    'boneless',
+    'skinless',
+    'peeled',
+    'finely',
+    'coarsely',
+    'roughly',
+    'thinly',
+    'thickly',
+    'fresh',
+    'dried',
+    'chopped',
+    'minced',
+    'diced',
+    'sliced',
+  ];
+
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly imageScoringService: ImageScoringService
+  ) {}
+
+  /**
+   * Clean and normalize ingredient name for caching and searching
+   */
+  private cleanIngredientName(name: string): string {
+    let cleaned = name.toLowerCase().trim();
+
+    // Remove parenthetical content
+    cleaned = cleaned.replace(/\([^)]*\)/g, ' ');
+
+    // Remove descriptors
+    for (const descriptor of this.descriptorsToRemove) {
+      cleaned = cleaned.replace(new RegExp(`\\b${descriptor}\\b`, 'gi'), ' ');
+    }
+
+    // Clean up whitespace and special characters
+    cleaned = cleaned
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return cleaned;
+  }
+
+  /**
+   * Normalize ingredient name for caching (consistent key)
+   */
+  normalizeIngredientName(name: string): string {
+    return this.cleanIngredientName(name);
+  }
+
+  /**
+   * Check if we're within rate limits
+   */
+  private canMakeRequest(): boolean {
+    const now = Date.now();
+    const hourInMs = 60 * 60 * 1000;
+
+    if (now - this.requestWindowStart > hourInMs) {
+      this.requestCount = 0;
+      this.requestWindowStart = now;
+    }
+
+    return this.requestCount < this.maxRequestsPerHour;
+  }
+
+  /**
+   * Check if cached entry is valid
+   */
+  private isValidPixabayCache(cached: IngredientImageCache): boolean {
+    return cached.source === 'pixabay' && Boolean(cached.image_url);
+  }
+
+  /**
+   * Fetch images from Pixabay API with scoring
+   * Fetches 50 candidates and scores them to pick the best match
+   */
+  private async fetchFromPixabayWithScoring(
+    originalName: string,
+    normalizedName: string
+  ): Promise<IngredientImageCache | null> {
+    if (!this.pixabayApiKey) {
+      this.logger.warn('Pixabay API key not configured');
+      return null;
+    }
+
+    if (!this.canMakeRequest()) {
+      this.logger.warn('Pixabay rate limit reached');
+      return null;
+    }
+
+    try {
+      // Get optimized search query from scoring service
+      const { query, preferredTags, bannedTags } =
+        this.imageScoringService.getOptimizedSearchQuery(originalName);
+
+      this.logger.debug(
+        `Searching Pixabay for "${originalName}" with optimized query: "${query}"`
+      );
+
+      // Fetch 50 candidates for better scoring
+      const url = `https://pixabay.com/api/?key=${this.pixabayApiKey}&q=${encodeURIComponent(query)}&image_type=photo&category=food&per_page=${this.candidateCount}&safesearch=true`;
+
+      const response = await fetch(url);
+      this.requestCount++;
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          this.logger.error('Pixabay API rate limit exceeded');
+        } else {
+          this.logger.error(`Pixabay API error: ${response.status}`);
+        }
+        return null;
+      }
+
+      const data: PixabaySearchResponse = await response.json();
+
+      if (data.hits.length === 0) {
+        this.logger.debug(`No Pixabay results for: ${originalName}`);
+        return null;
+      }
+
+      // Score and rank all candidates
+      const scoredHits = this.imageScoringService.scoreAndRankImages(
+        data.hits,
+        originalName,
+        preferredTags,
+        bannedTags
+      );
+
+      // Log scoring details for debugging
+      this.imageScoringService.logScoringDetails(originalName, scoredHits);
+
+      // Pick the best scored image
+      const bestPhoto = scoredHits[0];
+
+      return {
+        ingredient_name_normalized: normalizedName,
+        image_url: bestPhoto.webformatURL,
+        attribution_text: `Photo by ${bestPhoto.user} on Pixabay`,
+        attribution_link: bestPhoto.pageURL,
+        source: 'pixabay',
+        pixabay_id: bestPhoto.id,
+        score: bestPhoto.score,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch from Pixabay: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve image for a single ingredient (Pixabay with scoring)
+   */
+  async resolveIngredientImage(ingredientName: string): Promise<{
+    imageUrl: string;
+    attribution: IngredientAttribution;
+    source: 'pixabay' | 'placeholder';
+  }> {
+    const normalizedName = this.normalizeIngredientName(ingredientName);
+
+    // Check cache first
+    const cached = await this.databaseService.getIngredientImage(normalizedName);
+    if (cached && this.isValidPixabayCache(cached)) {
+      this.logger.debug(`Cache hit for: ${normalizedName}`);
+      return {
+        imageUrl: cached.image_url,
+        attribution: {
+          text: cached.attribution_text,
+          link: cached.attribution_link,
+        },
+        source: cached.source as 'pixabay' | 'placeholder',
+      };
+    }
+    if (cached) {
+      await this.databaseService.deleteIngredientImage(normalizedName);
+    }
+
+    // Fetch from Pixabay with scoring
+    const pixabayResult = await this.fetchFromPixabayWithScoring(
+      ingredientName,
+      normalizedName
+    );
+
+    if (pixabayResult) {
+      // Save to cache
+      await this.databaseService.saveIngredientImage(pixabayResult);
+      return {
+        imageUrl: pixabayResult.image_url,
+        attribution: {
+          text: pixabayResult.attribution_text,
+          link: pixabayResult.attribution_link,
+        },
+        source: 'pixabay',
+      };
+    }
+
+    // No match found; return empty image so UI can show "No image"
+    return {
+      imageUrl: '',
+      attribution: {
+        text: 'No image available',
+        link: '#',
+      },
+      source: 'placeholder',
+    };
+  }
+
+  /**
+   * Resolve images for multiple ingredients in batch (optimized)
+   */
+  async resolveIngredientImages(
+    ingredients: Array<{ name: string; amount: string; unit: string }>
+  ): Promise<{ ingredients: RecipeIngredient[]; warnings: string[] }> {
+    const warnings: string[] = [];
+    const normalizedNames = ingredients.map((ing) =>
+      this.normalizeIngredientName(ing.name)
+    );
+
+    // Batch fetch from cache
+    const cachedImages =
+      await this.databaseService.getMultipleIngredientImages(normalizedNames);
+
+    const results: RecipeIngredient[] = [];
+
+    for (let i = 0; i < ingredients.length; i++) {
+      const ingredient = ingredients[i];
+      const normalizedName = normalizedNames[i];
+      const cached = cachedImages.get(normalizedName);
+
+      if (cached && this.isValidPixabayCache(cached)) {
+        results.push({
+          name: ingredient.name,
+          amount: ingredient.amount,
+          unit: ingredient.unit,
+          imageUrl: cached.image_url,
+          imageSource: cached.source as 'pixabay' | 'placeholder',
+          attribution: {
+            text: cached.attribution_text,
+            link: cached.attribution_link,
+          },
+        });
+      } else {
+        if (cached) {
+          await this.databaseService.deleteIngredientImage(normalizedName);
+        }
+        // Need to fetch from Pixabay with scoring
+        const resolved = await this.resolveIngredientImage(ingredient.name);
+
+        if (resolved.source === 'placeholder') {
+          warnings.push(`Could not find image for "${ingredient.name}"`);
+        }
+
+        results.push({
+          name: ingredient.name,
+          amount: ingredient.amount,
+          unit: ingredient.unit,
+          imageUrl: resolved.imageUrl,
+          imageSource: resolved.source,
+          attribution: resolved.attribution,
+        });
+      }
+    }
+
+    return { ingredients: results, warnings };
+  }
+
+  /**
+   * Override cached image for an ingredient with user selection
+   * This allows users to manually correct incorrect images
+   */
+  async overrideIngredientImage(
+    ingredientName: string,
+    imageUrl: string,
+    attributionText: string,
+    attributionLink: string
+  ): Promise<void> {
+    const normalizedName = this.normalizeIngredientName(ingredientName);
+
+    const cacheEntry: IngredientImageCache = {
+      ingredient_name_normalized: normalizedName,
+      image_url: imageUrl,
+      attribution_text: attributionText,
+      attribution_link: attributionLink,
+      source: 'pixabay',
+      is_user_override: true,
+    };
+
+    await this.databaseService.saveIngredientImage(cacheEntry);
+    this.logger.log(`User override saved for ingredient: ${normalizedName}`);
+  }
+
+  /**
+   * Get alternative image candidates for an ingredient
+   * Useful for implementing "change image" UI feature
+   */
+  async getAlternativeImages(
+    ingredientName: string,
+    count: number = 10
+  ): Promise<
+    Array<{
+      imageUrl: string;
+      previewUrl: string;
+      attribution: IngredientAttribution;
+      pixabayId: number;
+      score: number;
+    }>
+  > {
+    if (!this.pixabayApiKey) {
+      this.logger.warn('Pixabay API key not configured');
+      return [];
+    }
+
+    if (!this.canMakeRequest()) {
+      this.logger.warn('Pixabay rate limit reached');
+      return [];
+    }
+
+    try {
+      const { query, preferredTags, bannedTags } =
+        this.imageScoringService.getOptimizedSearchQuery(ingredientName);
+
+      const url = `https://pixabay.com/api/?key=${this.pixabayApiKey}&q=${encodeURIComponent(query)}&image_type=photo&category=food&per_page=${this.candidateCount}&safesearch=true`;
+
+      const response = await fetch(url);
+      this.requestCount++;
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data: PixabaySearchResponse = await response.json();
+
+      if (data.hits.length === 0) {
+        return [];
+      }
+
+      // Score and rank all candidates
+      const scoredHits = this.imageScoringService.scoreAndRankImages(
+        data.hits,
+        ingredientName,
+        preferredTags,
+        bannedTags
+      );
+
+      // Return top N alternatives
+      return scoredHits.slice(0, count).map((hit) => ({
+        imageUrl: hit.webformatURL,
+        previewUrl: hit.previewURL,
+        attribution: {
+          text: `Photo by ${hit.user} on Pixabay`,
+          link: hit.pageURL,
+        },
+        pixabayId: hit.id,
+        score: hit.score,
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch alternatives: ${error}`);
+      return [];
+    }
+  }
+}

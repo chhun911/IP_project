@@ -36,6 +36,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         'attribution_text',
         'attribution_link',
         'source',
+        'pixabay_id',
+        'score',
+        'is_user_override',
         'created_at',
         'updated_at',
       ];
@@ -72,7 +75,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           image_url TEXT NOT NULL,
           attribution_text VARCHAR(500) NOT NULL,
           attribution_link TEXT NOT NULL,
-          source VARCHAR(50) NOT NULL DEFAULT 'unsplash',
+          source VARCHAR(50) NOT NULL DEFAULT 'pixabay',
+          pixabay_id INTEGER,
+          score REAL DEFAULT 0,
+          is_user_override BOOLEAN DEFAULT FALSE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -109,14 +115,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     try {
       await client.query(
         `INSERT INTO ingredient_images 
-         (ingredient_name_normalized, image_url, attribution_text, attribution_link, source)
-         VALUES ($1, $2, $3, $4, $5)
+         (ingredient_name_normalized, image_url, attribution_text, attribution_link, source, pixabay_id, score, is_user_override)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (ingredient_name_normalized) 
          DO UPDATE SET 
            image_url = EXCLUDED.image_url,
            attribution_text = EXCLUDED.attribution_text,
            attribution_link = EXCLUDED.attribution_link,
            source = EXCLUDED.source,
+           pixabay_id = EXCLUDED.pixabay_id,
+           score = EXCLUDED.score,
+           is_user_override = EXCLUDED.is_user_override,
            updated_at = CURRENT_TIMESTAMP`,
         [
           data.ingredient_name_normalized,
@@ -124,6 +133,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           data.attribution_text,
           data.attribution_link,
           data.source,
+          data.pixabay_id ?? null,
+          data.score ?? 0,
+          data.is_user_override ?? false,
         ]
       );
     } finally {
@@ -169,8 +181,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   async clearAllIngredientImages(): Promise<number> {
     const client = await this.pool.connect();
     try {
-      const result = await client.query(`DELETE FROM ingredient_images`);
-      this.logger.log(`Cleared ${result.rowCount} cached ingredient images`);
+      // Keep user overrides, only clear auto-fetched images
+      const result = await client.query(`DELETE FROM ingredient_images WHERE source != 'user_override'`);
+      this.logger.log(`Cleared ${result.rowCount} cached ingredient images (kept user overrides)`);
       return result.rowCount || 0;
     } finally {
       client.release();

@@ -2,321 +2,222 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from './database.service';
 import {
   IngredientImageCache,
-  UnsplashSearchResponse,
+  PixabayHit,
+  PixabaySearchResponse,
+  ScoredPixabayHit,
+  SearchAlternativesResult,
 } from '../interfaces/ingredient-image.interface';
 import { RecipeIngredient, IngredientAttribution } from '../dto/recipe.dto';
 
 @Injectable()
 export class IngredientImageService {
   private readonly logger = new Logger(IngredientImageService.name);
-  private readonly unsplashAccessKey = process.env.UNSPLASH_ACCESS_KEY;
+  private readonly pixabayApiKey = process.env.PIXABAY_API_KEY;
   
-  // Rate limiting: Unsplash free tier = 50 requests/hour
+  // Rate limiting
   private requestCount = 0;
   private requestWindowStart = Date.now();
-  private readonly maxRequestsPerHour = 50;
+  private readonly maxRequestsPerHour = 4000;
 
-  // Simple descriptors to remove from ingredient names for cleaner searches
+  // ─── Descriptors to remove for normalization ─────────────────────────
   private readonly descriptorsToRemove = [
-    'organic',
-    'optional',
-    'for garnish',
-    'to taste',
-    'as needed',
-    'large',
-    'medium',
-    'small',
-    'boneless',
-    'skinless',
-    'peeled',
-    'finely',
-    'coarsely',
-    'roughly',
-    'thinly',
-    'thickly',
-    'fresh',
-    'dried',
-    'chopped',
-    'minced',
-    'diced',
-    'sliced',
+    'organic', 'optional', 'for garnish', 'to taste', 'as needed',
+    'large', 'medium', 'small', 'boneless', 'skinless', 'peeled',
+    'finely', 'coarsely', 'roughly', 'thinly', 'thickly',
+    'chopped', 'minced', 'diced', 'sliced',
+    'washed', 'rinsed', 'trimmed', 'crushed', 'grated', 'shredded',
+    'lean', 'fat', 'ratio',
   ];
+
+  // ─── Simple synonym map for common abbreviations ──────────────────
+  private readonly synonymDictionary: Record<string, string> = {
+    'mayo': 'mayonnaise',
+    'catsup': 'ketchup',
+    'bbq sauce': 'barbecue sauce',
+    'scallion': 'green onion',
+    'buns': 'hamburger buns',
+    'burger buns': 'hamburger buns',
+  };
 
   constructor(private readonly databaseService: DatabaseService) {}
 
-  /**
-   * Clean and normalize ingredient name for caching and searching
-   */
+  // ═════════════════════════════════════════════════════════════════════
+  // NORMALIZATION
+  // ═════════════════════════════════════════════════════════════════════
+
   private cleanIngredientName(name: string): string {
     let cleaned = name.toLowerCase().trim();
-    
-    // Remove parenthetical content
     cleaned = cleaned.replace(/\([^)]*\)/g, ' ');
-    
-    // Remove descriptors
     for (const descriptor of this.descriptorsToRemove) {
       cleaned = cleaned.replace(new RegExp(`\\b${descriptor}\\b`, 'gi'), ' ');
     }
-    
-    // Clean up whitespace and special characters
-    cleaned = cleaned
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    
+    cleaned = cleaned.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     return cleaned;
   }
 
-  /**
-   * Extract the core ingredient name for simple Unsplash search
-   * This extracts just the main ingredient word(s) for accurate image results
-   */
-  private getSearchQuery(ingredientName: string): string {
-    const cleaned = this.cleanIngredientName(ingredientName);
-    
-    // Simple direct mappings for common ingredients to get exact food images
-    const searchMappings: Record<string, string> = {
-      'ground beef': 'raw ground beef meat',
-      'beef': 'raw beef meat',
-      'salt': 'salt seasoning',
-      'black pepper': 'black pepper spice',
-      'pepper': 'black pepper spice',
-      'burger buns': 'hamburger buns bread',
-      'buns': 'hamburger buns bread',
-      'lettuce leaves': 'fresh lettuce leaves',
-      'lettuce': 'fresh lettuce',
-      'tomato slices': 'sliced tomatoes',
-      'tomato': 'fresh tomatoes',
-      'red onion slices': 'red onion slices',
-      'red onion': 'red onion vegetable',
-      'onion': 'onion vegetable',
-      'pickle slices': 'pickle slices',
-      'pickles': 'dill pickles',
-      'american cheese slices': 'american cheese slices',
-      'american cheese': 'american cheese',
-      'cheese slices': 'cheese slices',
-      'cheese': 'cheese',
-      'mayonnaise': 'mayonnaise jar',
-      'mayo': 'mayonnaise jar',
-      'ketchup': 'ketchup bottle',
-      'yellow mustard': 'yellow mustard bottle',
-      'mustard': 'mustard bottle',
-      'relish': 'pickle relish jar',
-      'vegetable oil': 'vegetable oil bottle',
-      'olive oil': 'olive oil bottle',
-      'oil': 'cooking oil bottle',
-      'garlic': 'fresh garlic',
-      'ginger': 'fresh ginger root',
-      'butter': 'butter block',
-      'milk': 'glass of milk',
-      'cream': 'heavy cream',
-      'egg': 'chicken eggs',
-      'eggs': 'chicken eggs',
-      'flour': 'all purpose flour',
-      'sugar': 'white sugar',
-      'brown sugar': 'brown sugar',
-      'honey': 'honey jar',
-      'soy sauce': 'soy sauce bottle',
-      'vinegar': 'vinegar bottle',
-      'chicken': 'raw chicken meat',
-      'pork': 'raw pork meat',
-      'bacon': 'bacon strips',
-      'rice': 'white rice grains',
-      'pasta': 'dry pasta',
-      'noodles': 'noodles',
-      'carrot': 'fresh carrots',
-      'carrots': 'fresh carrots',
-      'potato': 'fresh potatoes',
-      'potatoes': 'fresh potatoes',
-      'celery': 'celery stalks',
-      'broccoli': 'fresh broccoli',
-      'spinach': 'fresh spinach',
-      'mushroom': 'fresh mushrooms',
-      'mushrooms': 'fresh mushrooms',
-      'lemon': 'fresh lemons',
-      'lime': 'fresh limes',
-      'parsley': 'fresh parsley',
-      'basil': 'fresh basil',
-      'cilantro': 'fresh cilantro',
-      'oregano': 'dried oregano',
-      'thyme': 'fresh thyme',
-      'rosemary': 'fresh rosemary',
-      'cumin': 'cumin spice',
-      'paprika': 'paprika spice',
-      'cinnamon': 'cinnamon sticks',
-      'vanilla': 'vanilla extract',
-    };
-    
-    // Check if we have a direct mapping
-    if (searchMappings[cleaned]) {
-      return searchMappings[cleaned];
-    }
-    
-    // Check for partial matches (e.g., "ground beef 80/20" should match "ground beef")
-    for (const [key, value] of Object.entries(searchMappings)) {
-      if (cleaned.includes(key)) {
-        return value;
-      }
-    }
-    
-    // Default: use the cleaned ingredient name + "food ingredient" for better results
-    return `${cleaned} food ingredient`;
-  }
-
-  /**
-   * Normalize ingredient name for caching (consistent key)
-   */
   normalizeIngredientName(name: string): string {
     return this.cleanIngredientName(name);
   }
 
-  /**
-   * Check if we're within rate limits
-   */
+  // ═════════════════════════════════════════════════════════════════════
+  // QUERY BUILDER — just use the ingredient name directly
+  // ═════════════════════════════════════════════════════════════════════
+
+  private buildSearchQuery(ingredientName: string): string {
+    const cleaned = this.cleanIngredientName(ingredientName);
+
+    // Only resolve simple abbreviations/synonyms
+    if (this.synonymDictionary[cleaned]) {
+      return this.synonymDictionary[cleaned];
+    }
+
+    // Add "food" so Pixabay returns the ingredient, not unrelated matches
+    // e.g. "yellow mustard" → "yellow mustard food" (condiment, not plant)
+    return `${cleaned} food`;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // RATE LIMITING
+  // ═════════════════════════════════════════════════════════════════════
+
   private canMakeRequest(): boolean {
     const now = Date.now();
-    const hourInMs = 60 * 60 * 1000;
-    
-    if (now - this.requestWindowStart > hourInMs) {
+    if (now - this.requestWindowStart > 3600000) {
       this.requestCount = 0;
       this.requestWindowStart = now;
     }
-    
     return this.requestCount < this.maxRequestsPerHour;
   }
 
-  /**
-   * Check if cached entry is valid
-   */
-  private isValidUnsplashCache(cached: IngredientImageCache): boolean {
-    return cached.source === 'unsplash' && Boolean(cached.image_url);
+  private isValidCache(cached: IngredientImageCache): boolean {
+    return (cached.source === 'pixabay' || cached.source === 'user_override') && Boolean(cached.image_url);
   }
 
-  /**
-   * Fetch image from Unsplash API - SIMPLE approach: just search by ingredient name
-   * and take the first relevant result
-   */
-  private async fetchFromUnsplash(originalName: string, normalizedName: string): Promise<IngredientImageCache | null> {
-    if (!this.unsplashAccessKey) {
-      this.logger.warn('Unsplash API key not configured');
-      return null;
-    }
+  // ═════════════════════════════════════════════════════════════════════
+  // FETCH FROM PIXABAY — simple search, trust Pixabay's relevance
+  // ═════════════════════════════════════════════════════════════════════
 
+  private async fetchAndScoreFromPixabay(
+    originalName: string,
+    normalizedName: string,
+  ): Promise<{ best: IngredientImageCache | null; allScored: ScoredPixabayHit[] }> {
+    if (!this.pixabayApiKey) {
+      this.logger.warn('Pixabay API key not configured');
+      return { best: null, allScored: [] };
+    }
     if (!this.canMakeRequest()) {
-      this.logger.warn('Unsplash rate limit reached');
-      return null;
+      this.logger.warn('Pixabay rate limit reached');
+      return { best: null, allScored: [] };
     }
 
     try {
-      // Get a clean, simple search query based on the ingredient name
-      const searchQuery = this.getSearchQuery(originalName);
-      this.logger.debug(`Searching Unsplash for "${originalName}" with query: "${searchQuery}"`);
-      
-      const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchQuery)}&per_page=5&content_filter=high`;
-      
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Client-ID ${this.unsplashAccessKey}`,
-        },
-      });
+      const searchQuery = this.buildSearchQuery(originalName);
+      this.logger.debug(`Searching Pixabay for "${originalName}" → query: "${searchQuery}"`);
 
+      // Simple search — just the ingredient name, no extra filters that confuse results
+      const url = `https://pixabay.com/api/?key=${this.pixabayApiKey}&q=${encodeURIComponent(searchQuery)}&image_type=photo&per_page=20&safesearch=true`;
+
+      const response = await fetch(url);
       this.requestCount++;
 
       if (!response.ok) {
-        this.logger.error(`Unsplash API error: ${response.status}`);
-        return null;
+        if (response.status === 429) {
+          this.logger.error('Pixabay API rate limit exceeded');
+        } else {
+          this.logger.error(`Pixabay API error: ${response.status}`);
+        }
+        return { best: null, allScored: [] };
       }
 
-      const data: UnsplashSearchResponse = await response.json();
+      const data: PixabaySearchResponse = await response.json();
 
-      if (data.results.length === 0) {
-        this.logger.debug(`No Unsplash results for: ${originalName}`);
-        return null;
+      if (data.hits.length === 0) {
+        this.logger.debug(`No Pixabay results for: ${originalName}`);
+        return { best: null, allScored: [] };
       }
 
-      // Simply take the first result - Unsplash's search is good enough
-      // when we provide a clear ingredient-focused query
-      const bestPhoto = data.results[0];
-      
-      return {
+      // Trust Pixabay's relevance ordering — just assign position-based scores
+      const scored: ScoredPixabayHit[] = data.hits.map((hit, index) => ({
+        hit,
+        score: data.hits.length - index, // first result = highest score
+        reasons: [`Position ${index + 1} in Pixabay results`],
+      }));
+
+      // Pick the first result (most relevant according to Pixabay)
+      const bestPhoto = data.hits[0];
+
+      const best: IngredientImageCache = {
         ingredient_name_normalized: normalizedName,
-        image_url: bestPhoto.urls.small,
-        attribution_text: `Photo by ${bestPhoto.user.name} on Unsplash`,
-        attribution_link: `${bestPhoto.user.links.html}?utm_source=aicookbook&utm_medium=referral`,
-        source: 'unsplash',
+        image_url: bestPhoto.webformatURL,
+        attribution_text: `Photo by ${bestPhoto.user} on Pixabay`,
+        attribution_link: bestPhoto.pageURL,
+        source: 'pixabay',
+        pixabay_id: bestPhoto.id,
+        score: scored[0].score,
       };
+
+      return { best, allScored: scored };
     } catch (error) {
-      this.logger.error(`Failed to fetch from Unsplash: ${error}`);
-      return null;
+      this.logger.error(`Failed to fetch from Pixabay: ${error}`);
+      return { best: null, allScored: [] };
     }
   }
 
-  /**
-   * Resolve image for a single ingredient (Unsplash only)
-   */
+  // ═════════════════════════════════════════════════════════════════════
+  // RESOLVE SINGLE INGREDIENT IMAGE
+  // ═════════════════════════════════════════════════════════════════════
+
   async resolveIngredientImage(
-    ingredientName: string
-  ): Promise<{ imageUrl: string; attribution: IngredientAttribution; source: 'unsplash' | 'placeholder' }> {
+    ingredientName: string,
+  ): Promise<{ imageUrl: string; attribution: IngredientAttribution; source: 'pixabay' | 'placeholder' | 'user_override' }> {
     const normalizedName = this.normalizeIngredientName(ingredientName);
 
-    // Check cache first
+    // (6) Check cache first — user overrides are always valid
     const cached = await this.databaseService.getIngredientImage(normalizedName);
-    if (cached && this.isValidUnsplashCache(cached)) {
-      this.logger.debug(`Cache hit for: ${normalizedName}`);
+    if (cached && this.isValidCache(cached)) {
+      this.logger.debug(`Cache hit for: ${normalizedName} (source: ${cached.source})`);
       return {
         imageUrl: cached.image_url,
-        attribution: {
-          text: cached.attribution_text,
-          link: cached.attribution_link,
-        },
-        source: cached.source as 'unsplash' | 'placeholder',
+        attribution: { text: cached.attribution_text, link: cached.attribution_link },
+        source: cached.source as 'pixabay' | 'placeholder' | 'user_override',
       };
     }
     if (cached) {
       await this.databaseService.deleteIngredientImage(normalizedName);
     }
 
-    // Fetch from Unsplash - use ORIGINAL name for better pattern matching
-    const unsplashResult = await this.fetchFromUnsplash(ingredientName, normalizedName);
-    
-    if (unsplashResult) {
-      // Save to cache
-      await this.databaseService.saveIngredientImage(unsplashResult);
+    // Fetch + score from Pixabay
+    const { best } = await this.fetchAndScoreFromPixabay(ingredientName, normalizedName);
+
+    if (best) {
+      // (6) Cache in Postgres
+      await this.databaseService.saveIngredientImage(best);
       return {
-        imageUrl: unsplashResult.image_url,
-        attribution: {
-          text: unsplashResult.attribution_text,
-          link: unsplashResult.attribution_link,
-        },
-        source: 'unsplash',
+        imageUrl: best.image_url,
+        attribution: { text: best.attribution_text, link: best.attribution_link },
+        source: 'pixabay',
       };
     }
 
-    // No match found; return empty image so UI can show "No image"
     return {
       imageUrl: '',
-      attribution: {
-        text: 'No image available',
-        link: '#',
-      },
+      attribution: { text: 'No image available', link: '#' },
       source: 'placeholder',
     };
   }
 
-  /**
-   * Resolve images for multiple ingredients in batch (optimized)
-   */
+  // ═════════════════════════════════════════════════════════════════════
+  // RESOLVE MULTIPLE INGREDIENT IMAGES (batch)
+  // ═════════════════════════════════════════════════════════════════════
+
   async resolveIngredientImages(
-    ingredients: Array<{ name: string; amount: string; unit: string }>
+    ingredients: Array<{ name: string; amount: string; unit: string }>,
   ): Promise<{ ingredients: RecipeIngredient[]; warnings: string[] }> {
     const warnings: string[] = [];
-    const normalizedNames = ingredients.map((ing) =>
-      this.normalizeIngredientName(ing.name)
-    );
+    const normalizedNames = ingredients.map(ing => this.normalizeIngredientName(ing.name));
 
     // Batch fetch from cache
     const cachedImages = await this.databaseService.getMultipleIngredientImages(normalizedNames);
-
     const results: RecipeIngredient[] = [];
 
     for (let i = 0; i < ingredients.length; i++) {
@@ -324,29 +225,23 @@ export class IngredientImageService {
       const normalizedName = normalizedNames[i];
       const cached = cachedImages.get(normalizedName);
 
-      if (cached && this.isValidUnsplashCache(cached)) {
+      if (cached && this.isValidCache(cached)) {
         results.push({
           name: ingredient.name,
           amount: ingredient.amount,
           unit: ingredient.unit,
           imageUrl: cached.image_url,
-          imageSource: cached.source as 'unsplash' | 'placeholder',
-          attribution: {
-            text: cached.attribution_text,
-            link: cached.attribution_link,
-          },
+          imageSource: cached.source as 'pixabay' | 'placeholder' | 'user_override',
+          attribution: { text: cached.attribution_text, link: cached.attribution_link },
         });
       } else {
         if (cached) {
           await this.databaseService.deleteIngredientImage(normalizedName);
         }
-        // Need to fetch from Unsplash
         const resolved = await this.resolveIngredientImage(ingredient.name);
-        
         if (resolved.source === 'placeholder') {
           warnings.push(`Could not find image for "${ingredient.name}"`);
         }
-
         results.push({
           name: ingredient.name,
           amount: ingredient.amount,
@@ -359,5 +254,53 @@ export class IngredientImageService {
     }
 
     return { ingredients: results, warnings };
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // (6) USER OVERRIDE — manually set an image for an ingredient
+  // ═════════════════════════════════════════════════════════════════════
+
+  async overrideIngredientImage(
+    ingredientName: string,
+    imageUrl: string,
+    attributionText: string,
+    attributionLink: string,
+  ): Promise<IngredientImageCache> {
+    const normalizedName = this.normalizeIngredientName(ingredientName);
+
+    const data: IngredientImageCache = {
+      ingredient_name_normalized: normalizedName,
+      image_url: imageUrl,
+      attribution_text: attributionText,
+      attribution_link: attributionLink,
+      source: 'user_override',
+      is_user_override: true,
+    };
+
+    await this.databaseService.saveIngredientImage(data);
+    this.logger.log(`User override saved for: ${normalizedName}`);
+    return data;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // (6) SEARCH ALTERNATIVES — let user pick from scored candidates
+  // ═════════════════════════════════════════════════════════════════════
+
+  async searchAlternativeImages(ingredientName: string): Promise<SearchAlternativesResult> {
+    const normalizedName = this.normalizeIngredientName(ingredientName);
+    const { allScored } = await this.fetchAndScoreFromPixabay(ingredientName, normalizedName);
+
+    // Return top 12 alternatives for user to choose from
+    const alternatives = allScored.slice(0, 12).map(scored => ({
+      imageUrl: scored.hit.webformatURL,
+      previewUrl: scored.hit.previewURL,
+      attributionText: `Photo by ${scored.hit.user} on Pixabay`,
+      attributionLink: scored.hit.pageURL,
+      score: scored.score,
+      tags: scored.hit.tags,
+      pixabayId: scored.hit.id,
+    }));
+
+    return { ingredientName: normalizedName, alternatives };
   }
 }

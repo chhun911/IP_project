@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 // Types
 interface IngredientAttribution {
@@ -12,7 +12,7 @@ interface RecipeIngredient {
   amount: string
   unit: string
   imageUrl: string
-  imageSource: 'unsplash' | 'placeholder'
+  imageSource: 'pixabay' | 'placeholder' | 'user_override'
   attribution: IngredientAttribution
 }
 
@@ -26,7 +26,31 @@ interface GeneratedRecipe {
   warnings: string[]
 }
 
+interface RecipeSession {
+  id: string
+  title: string
+  mode: RecipeMode
+  query: string // mealName or ingredients list
+  recipe: GeneratedRecipe | null
+  createdAt: Date
+}
+
+interface AlternativeImage {
+  imageUrl: string
+  previewUrl: string
+  attributionText: string
+  attributionLink: string
+  score: number
+  tags: string
+  pixabayId: number
+}
+
 type RecipeMode = 'mealName' | 'fromIngredients'
+
+// Sidebar state
+const sidebarCollapsed = ref(false)
+const recipeSessions = ref<RecipeSession[]>([])
+const currentSessionId = ref<string | null>(null)
 
 // State
 const mode = ref<RecipeMode>('mealName')
@@ -59,13 +83,59 @@ const formattedTime = computed(() => {
   return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`
 })
 
+const sortedSessions = computed(() => 
+  [...recipeSessions.value].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+)
+
+// Generate unique ID
+const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+// Create new recipe session
+const createNewRecipe = () => {
+  currentSessionId.value = null
+  recipe.value = null
+  error.value = null
+  mealName.value = ''
+  ingredientsText.value = ''
+  mode.value = 'mealName'
+}
+
+// Select a recipe session
+const selectRecipe = (sessionId: string) => {
+  currentSessionId.value = sessionId
+  const session = recipeSessions.value.find(s => s.id === sessionId)
+  if (session) {
+    recipe.value = session.recipe
+    mode.value = session.mode
+    if (session.mode === 'mealName') {
+      mealName.value = session.query
+      ingredientsText.value = ''
+    } else {
+      ingredientsText.value = session.query
+      mealName.value = ''
+    }
+    error.value = null
+  }
+}
+
+// Delete a recipe session
+const deleteRecipe = (sessionId: string, event: Event) => {
+  event.stopPropagation()
+  const index = recipeSessions.value.findIndex(s => s.id === sessionId)
+  if (index !== -1) {
+    recipeSessions.value.splice(index, 1)
+    if (currentSessionId.value === sessionId) {
+      createNewRecipe()
+    }
+  }
+}
+
 // API call
 async function generateRecipe() {
   if (!canSubmit.value) return
 
   isLoading.value = true
   error.value = null
-  recipe.value = null
 
   try {
     const payload = mode.value === 'mealName'
@@ -83,7 +153,26 @@ async function generateRecipe() {
       throw new Error(errData.message || `Request failed: ${response.status}`)
     }
 
-    recipe.value = await response.json()
+    const generatedRecipe = await response.json()
+    recipe.value = generatedRecipe
+
+    // Save to history
+    const queryText = mode.value === 'mealName' 
+      ? mealName.value.trim() 
+      : ingredientsList.value.join(', ')
+    
+    const newSession: RecipeSession = {
+      id: generateId(),
+      title: generatedRecipe.title || queryText.slice(0, 30),
+      mode: mode.value,
+      query: queryText,
+      recipe: generatedRecipe,
+      createdAt: new Date()
+    }
+    
+    recipeSessions.value.push(newSession)
+    currentSessionId.value = newSession.id
+
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to generate recipe'
   } finally {
@@ -95,16 +184,161 @@ function clearRecipe() {
   recipe.value = null
   error.value = null
 }
+
+// ── Image override / alternatives state ──
+const showImageModal = ref(false)
+const imageModalIngredient = ref<string>('')
+const imageModalIndex = ref<number>(-1)
+const alternativeImages = ref<AlternativeImage[]>([])
+const isLoadingAlternatives = ref(false)
+
+async function openImageAlternatives(ingredientName: string, index: number) {
+  imageModalIngredient.value = ingredientName
+  imageModalIndex.value = index
+  showImageModal.value = true
+  isLoadingAlternatives.value = true
+  alternativeImages.value = []
+
+  try {
+    const response = await fetch(
+      `http://localhost:3001/api/recipes/ingredient-alternatives?name=${encodeURIComponent(ingredientName)}`
+    )
+    if (!response.ok) throw new Error('Failed to fetch alternatives')
+    const data = await response.json()
+    alternativeImages.value = data.alternatives || []
+  } catch (err) {
+    console.error('Failed to load alternative images:', err)
+  } finally {
+    isLoadingAlternatives.value = false
+  }
+}
+
+async function selectAlternativeImage(alt: AlternativeImage) {
+  if (!recipe.value || imageModalIndex.value < 0) return
+
+  try {
+    // Save override to backend
+    await fetch('http://localhost:3001/api/recipes/ingredient-image', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ingredientName: imageModalIngredient.value,
+        imageUrl: alt.imageUrl,
+        attributionText: alt.attributionText,
+        attributionLink: alt.attributionLink,
+      }),
+    })
+
+    // Update local recipe state
+    const ing = recipe.value.ingredients[imageModalIndex.value]
+    ing.imageUrl = alt.imageUrl
+    ing.imageSource = 'user_override'
+    ing.attribution = { text: alt.attributionText, link: alt.attributionLink }
+
+    showImageModal.value = false
+  } catch (err) {
+    console.error('Failed to save image override:', err)
+  }
+}
+
+function closeImageModal() {
+  showImageModal.value = false
+  alternativeImages.value = []
+}
+
+// Collapse sidebar on mobile initially
+onMounted(() => {
+  if (window.innerWidth <= 768) {
+    sidebarCollapsed.value = true
+  }
+})
 </script>
 
 <template>
-  <div class="recipe-generator">
-    <!-- Header -->
-    <div class="header">
-      <h1>🍳 AI Recipe Generator</h1>
-      <p class="subtitle">Get delicious recipes with ingredient images</p>
-    </div>
+  <div class="recipe-layout">
+    <!-- Overlay for mobile -->
+    <div class="sidebar-overlay" :class="{ active: !sidebarCollapsed }" @click="sidebarCollapsed = true"></div>
+    
+    <!-- Sidebar -->
+    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <div class="sidebar-header">
+        <button class="sidebar-logo" @click="sidebarCollapsed = !sidebarCollapsed">
+          🍳
+        </button>
+        <button class="new-recipe-btn" @click="createNewRecipe" v-if="!sidebarCollapsed">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span class="text">New recipe</span>
+        </button>
+        <button class="toggle-sidebar-btn" @click="sidebarCollapsed = !sidebarCollapsed" v-if="!sidebarCollapsed">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+      </div>
 
+      <div class="sidebar-content">
+        <div class="recipe-list" v-if="!sidebarCollapsed">
+          <div
+            v-for="session in sortedSessions"
+            :key="session.id"
+            class="recipe-item"
+            :class="{ active: session.id === currentSessionId }"
+            @click="selectRecipe(session.id)"
+          >
+            <svg class="recipe-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>
+            </svg>
+            <div class="recipe-info">
+              <span class="recipe-title">{{ session.title }}</span>
+              <span class="recipe-mode">{{ session.mode === 'mealName' ? 'By Name' : 'From Ingredients' }}</span>
+            </div>
+            <button class="delete-btn" @click="deleteRecipe(session.id, $event)" title="Delete">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+              </svg>
+            </button>
+          </div>
+          <div v-if="recipeSessions.length === 0" class="no-history">
+            No recipe history yet
+          </div>
+        </div>
+
+        <!-- Collapsed Icons -->
+        <div class="sidebar-icons" v-if="sidebarCollapsed">
+          <button class="icon-btn" @click="createNewRecipe" title="New recipe">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+          <button 
+            v-for="session in sortedSessions.slice(0, 5)"
+            :key="session.id"
+            class="icon-btn"
+            :class="{ active: session.id === currentSessionId }"
+            @click="selectRecipe(session.id)"
+            :title="session.title"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="recipe-main">
+      <div class="recipe-header">
+        <button class="mobile-menu-btn" @click="sidebarCollapsed = !sidebarCollapsed">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+        </button>
+        <h1 class="recipe-header-title">🍳 AI Recipe Generator</h1>
+      </div>
+      <div class="recipe-generator">
     <!-- Input Section -->
     <div class="input-section">
       <!-- Mode Toggle -->
@@ -219,6 +453,14 @@ function clearRecipe() {
                 loading="lazy"
               />
               <div v-else class="ingredient-image-empty">No image</div>
+              <!-- Change Image button overlay -->
+              <button
+                class="change-image-btn"
+                @click="openImageAlternatives(ing.name, idx)"
+                title="Change image"
+              >
+                🔄
+              </button>
             </div>
             <div class="ingredient-info">
               <span class="ingredient-name">{{ ing.name }}</span>
@@ -227,7 +469,7 @@ function clearRecipe() {
               </span>
             </div>
             <a
-              v-if="ing.imageSource === 'unsplash'"
+              v-if="ing.imageSource === 'pixabay' || ing.imageSource === 'user_override'"
               :href="ing.attribution.link"
               target="_blank"
               rel="noopener noreferrer"
@@ -235,6 +477,37 @@ function clearRecipe() {
             >
               {{ ing.attribution.text }}
             </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Image Alternatives Modal -->
+      <div v-if="showImageModal" class="image-modal-overlay" @click.self="closeImageModal">
+        <div class="image-modal">
+          <div class="image-modal-header">
+            <h3>Choose image for "{{ imageModalIngredient }}"</h3>
+            <button class="image-modal-close" @click="closeImageModal">✕</button>
+          </div>
+          <div v-if="isLoadingAlternatives" class="image-modal-loading">
+            <div class="loading-spinner"></div>
+            <p>Loading alternatives...</p>
+          </div>
+          <div v-else-if="alternativeImages.length === 0" class="image-modal-empty">
+            No alternative images found
+          </div>
+          <div v-else class="image-modal-grid">
+            <div
+              v-for="(alt, idx) in alternativeImages"
+              :key="idx"
+              class="image-modal-item"
+              @click="selectAlternativeImage(alt)"
+            >
+              <img :src="alt.previewUrl" :alt="alt.tags" loading="lazy" />
+              <div class="image-modal-item-info">
+                <span class="image-modal-score">Score: {{ alt.score }}</span>
+                <span class="image-modal-tags">{{ alt.tags }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -259,38 +532,309 @@ function clearRecipe() {
       </div>
 
       <!-- New Recipe Button -->
-      <button class="new-recipe-btn" @click="clearRecipe">
+      <button class="generate-another-btn" @click="createNewRecipe">
         🔄 Generate Another Recipe
       </button>
+    </div>
+  </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.recipe-generator {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px;
-  color: #ffffff;
+.recipe-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: #0f0f0f;
+  position: relative;
+  overflow: hidden;
 }
 
-.header {
+/* Sidebar Overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 260px;
+  background: #171717;
+  border-right: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar-header {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-logo {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.sidebar-logo:hover {
+  background: #2a2a2a;
+}
+
+.new-recipe-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  color: #e5e5e5;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.new-recipe-btn:hover {
+  background: #2a2a2a;
+}
+
+.new-recipe-btn .icon {
+  flex-shrink: 0;
+}
+
+.toggle-sidebar-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle-sidebar-btn:hover {
+  background: #2a2a2a;
+  color: #e5e5e5;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 8px;
+}
+
+.sidebar-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 3px;
+}
+
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.recipe-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+  color: #e5e5e5;
+}
+
+.recipe-item:hover {
+  background: #2a2a2a;
+}
+
+.recipe-item.active {
+  background: #2a2a2a;
+}
+
+.recipe-icon {
+  flex-shrink: 0;
+  color: #888;
+}
+
+.recipe-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recipe-title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recipe-mode {
+  font-size: 11px;
+  color: #666;
+}
+
+.delete-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  color: #888;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recipe-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: #3a3a3a;
+  color: #ff6b6b;
+}
+
+.no-history {
+  color: #555;
+  font-size: 12px;
   text-align: center;
-  margin-bottom: 32px;
+  padding: 20px 10px;
 }
 
-.header h1 {
-  font-size: 2rem;
-  margin: 0 0 8px;
+/* Collapsed Sidebar Icons */
+.sidebar-icons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: #2a2a2a;
+  color: #e5e5e5;
+}
+
+.icon-btn.active {
+  background: #2a2a2a;
+  color: #e5e5e5;
+}
+
+/* Main Content */
+.recipe-main {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.recipe-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.mobile-menu-btn {
+  display: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.mobile-menu-btn:hover {
+  background: #2a2a2a;
+  color: #e5e5e5;
+}
+
+.recipe-header-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
   background: linear-gradient(135deg, #ff6b6b, #feca57);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.subtitle {
-  color: #888;
-  margin: 0;
+.recipe-generator {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+  color: #ffffff;
 }
 
 /* Mode Toggle */
@@ -685,8 +1229,8 @@ function clearRecipe() {
   font-size: 14px;
 }
 
-/* New Recipe Button */
-.new-recipe-btn {
+/* Generate Another Button */
+.generate-another-btn {
   width: 100%;
   padding: 14px;
   border: 2px solid #333;
@@ -698,12 +1242,186 @@ function clearRecipe() {
   transition: all 0.2s;
 }
 
-.new-recipe-btn:hover {
+.generate-another-btn:hover {
   border-color: #ff6b6b;
   background: rgba(255, 107, 107, 0.1);
 }
 
+/* ── Change Image Button ── */
+.change-image-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.ingredient-card:hover .change-image-btn {
+  opacity: 1;
+}
+
+.change-image-btn:hover {
+  background: rgba(255, 107, 107, 0.85);
+}
+
+/* ── Image Alternatives Modal ── */
+.image-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.image-modal {
+  background: #1a1a1a;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.image-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #333;
+}
+
+.image-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #fff;
+}
+
+.image-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.image-modal-close:hover {
+  background: #333;
+  color: #fff;
+}
+
+.image-modal-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px;
+  color: #888;
+}
+
+.image-modal-empty {
+  padding: 48px;
+  text-align: center;
+  color: #666;
+}
+
+.image-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.image-modal-item {
+  background: #0f0f0f;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.image-modal-item:hover {
+  border-color: #ff6b6b;
+  transform: translateY(-2px);
+}
+
+.image-modal-item img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.image-modal-item-info {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.image-modal-score {
+  font-size: 11px;
+  font-weight: 600;
+  color: #feca57;
+}
+
+.image-modal-tags {
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Responsive */
+@media (max-width: 768px) {
+  .sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+  }
+}
+
 @media (max-width: 600px) {
   .recipe-generator {
     padding: 16px;

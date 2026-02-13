@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Delete, Body, Query, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Query, Param, HttpCode, HttpStatus, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { ChatService } from './chat.service';
 import { ChatDto } from './dto/chat.dto';
 import { ChatDatabaseService } from './services/chat-database.service';
@@ -13,6 +14,29 @@ export class ChatController {
   @Post()
   async chat(@Body() chatDto: ChatDto) {
     return this.chatService.processChat(chatDto);
+  }
+
+  /**
+   * POST /api/chat/stream
+   * Stream chat response via Server-Sent Events for real-time token display
+   */
+  @Post('stream')
+  async chatStream(@Body() chatDto: ChatDto, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    try {
+      const result = await this.chatService.processChatStream(chatDto, res);
+      // Send final event with metadata (conversationId, full response for DB)
+      res.write(`data: ${JSON.stringify({ type: 'done', conversationId: result.conversationId })}\n\n`);
+    } catch (err: any) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message || 'Stream failed' })}\n\n`);
+    } finally {
+      res.end();
+    }
   }
 
   /**

@@ -18,7 +18,7 @@ export class DeepSeekService {
   private readonly apiBaseUrl = process.env.AI_API_BASE_URL || 'https://api.deepseek.com';
 
   /**
-   * Send a chat message to DeepSeek AI
+   * Send a chat message to DeepSeek AI (non-streaming)
    */
   async chat(userMessage: string, conversationHistory?: ChatMessage[]): Promise<DeepSeekChatResponse> {
     if (!this.apiKey) {
@@ -29,17 +29,7 @@ export class DeepSeekService {
       throw new BadRequestException('Message cannot be empty');
     }
 
-    const messages: ChatMessage[] = [
-      {
-        role: 'system',
-        content: this.getSystemPrompt(),
-      },
-      ...(conversationHistory || []),
-      {
-        role: 'user',
-        content: userMessage,
-      },
-    ];
+    const messages = this.buildMessages(userMessage, conversationHistory);
 
     try {
       const response = await fetch(`${this.apiBaseUrl}/v1/chat/completions`, {
@@ -51,7 +41,7 @@ export class DeepSeekService {
         body: JSON.stringify({
           model: this.model,
           messages,
-          temperature: 0.7,
+          temperature: 0.5,
           max_tokens: 2000,
         }),
       });
@@ -78,6 +68,98 @@ export class DeepSeekService {
       this.logger.error(`DeepSeek API request failed: ${error}`);
       throw new BadRequestException('Failed to communicate with AI service');
     }
+  }
+
+  /**
+   * Stream a chat response from DeepSeek AI using SSE.
+   * Yields string chunks as they arrive.
+   */
+  async *chatStream(userMessage: string, conversationHistory?: ChatMessage[]): AsyncGenerator<string> {
+    if (!this.apiKey) {
+      throw new BadRequestException('AI API key not configured');
+    }
+
+    if (!userMessage || userMessage.trim().length === 0) {
+      throw new BadRequestException('Message cannot be empty');
+    }
+
+    const messages = this.buildMessages(userMessage, conversationHistory);
+
+    const response = await fetch(`${this.apiBaseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages,
+        temperature: 0.5,
+        max_tokens: 2000,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      this.logger.error(`DeepSeek stream API error: ${errBody}`);
+      throw new BadRequestException('Failed to get streaming response from AI');
+    }
+
+    const reader = response.body as any;
+    // Node 18+ fetch returns a ReadableStream; convert to async iterable
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for await (const chunk of reader) {
+      buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') return;
+
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) {
+            yield delta;
+          }
+        } catch {
+          // skip malformed JSON lines
+        }
+      }
+    }
+
+    // Process remaining buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data: ') && trimmed.slice(6) !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(trimmed.slice(6));
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        } catch { /* skip */ }
+      }
+    }
+  }
+
+  private buildMessages(userMessage: string, conversationHistory?: ChatMessage[]): ChatMessage[] {
+    return [
+      {
+        role: 'system',
+        content: this.getSystemPrompt(),
+      },
+      ...(conversationHistory || []),
+      {
+        role: 'user',
+        content: userMessage,
+      },
+    ];
   }
 
   /**

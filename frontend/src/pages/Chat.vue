@@ -145,9 +145,19 @@ const sendMessage = async () => {
   inputMessage.value = ''
   loading.value = true
 
+  // Add placeholder AI message for streaming
+  const aiMsg: Message = {
+    id: `msg-${messageId.value++}`,
+    type: 'ai',
+    content: '',
+    timestamp: new Date()
+  }
+  messages.value.push(aiMsg)
+  const aiMsgIndex = messages.value.length - 1
+
   try {
-    // Call chat API with userId and conversationId
-    const response = await fetch(`${API_BASE_URL}/api/chat`, {
+    // Use streaming endpoint for real-time token display
+    const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -159,38 +169,51 @@ const sendMessage = async () => {
 
     if (!response.ok) throw new Error('Chat failed')
 
-    const data = await response.json()
-    
-    // If this was a new conversation, store the returned conversationId
-    if (data.conversationId && !currentSessionId.value) {
-      const newSession: ChatSession = {
-        id: String(data.conversationId),
-        title: query.slice(0, 30) + (query.length > 30 ? '...' : ''),
-        messages: [...messages.value],
-        createdAt: new Date(),
-        updatedAt: new Date()
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data: ')) continue
+        try {
+          const event = JSON.parse(trimmed.slice(6))
+          if (event.type === 'token') {
+            messages.value[aiMsgIndex].content += event.content
+          } else if (event.type === 'done') {
+            // Store conversationId from server
+            if (event.conversationId && !currentSessionId.value) {
+              const newSession: ChatSession = {
+                id: String(event.conversationId),
+                title: query.slice(0, 30) + (query.length > 30 ? '...' : ''),
+                messages: [...messages.value],
+                createdAt: new Date(),
+                updatedAt: new Date()
+              }
+              chatSessions.value.push(newSession)
+              currentSessionId.value = String(event.conversationId)
+            }
+          } else if (event.type === 'error') {
+            messages.value[aiMsgIndex].content = event.message || 'Sorry, something went wrong.'
+          }
+        } catch { /* skip malformed lines */ }
       }
-      chatSessions.value.push(newSession)
-      currentSessionId.value = String(data.conversationId)
     }
 
-    // Add AI response
-    const aiMsg: Message = {
-      id: `msg-${messageId.value++}`,
-      type: 'ai',
-      content: data.response,
-      recipe: data.recipe,
-      timestamp: new Date()
+    // If response is still empty after stream, show fallback
+    if (!messages.value[aiMsgIndex].content) {
+      messages.value[aiMsgIndex].content = 'Sorry, I received an empty response. Please try again.'
     }
-    messages.value.push(aiMsg)
   } catch (err) {
-    const errorMsg: Message = {
-      id: `msg-${messageId.value++}`,
-      type: 'ai',
-      content: 'Sorry, I encountered an error. Please try again.',
-      timestamp: new Date()
-    }
-    messages.value.push(errorMsg)
+    messages.value[aiMsgIndex].content = 'Sorry, I encountered an error. Please try again.'
   } finally {
     loading.value = false
   }

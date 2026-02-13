@@ -41,7 +41,7 @@ export class OpenAIService {
               content: prompt,
             },
           ],
-          temperature: 0.7,
+          temperature: 0.5,
           max_tokens: 2000,
           response_format: { type: 'json_object' },
         }),
@@ -150,5 +150,80 @@ Suggest a creative name for the dish.`;
       tips: Array.isArray(recipe.tips) ? recipe.tips : [],
       warnings: Array.isArray(recipe.warnings) ? recipe.warnings : [],
     };
+  }
+
+  /**
+   * Stream recipe generation from DeepSeek — yields raw text chunks.
+   * After all chunks arrive, the caller parses the complete JSON.
+   */
+  async *generateRecipeStream(
+    mode: RecipeMode,
+    mealName?: string,
+    ingredients?: string[],
+  ): AsyncGenerator<string> {
+    if (!this.apiKey) {
+      throw new BadRequestException('AI API key not configured');
+    }
+
+    const prompt = this.buildPrompt(mode, mealName, ingredients);
+
+    const response = await fetch(`${this.apiBaseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: this.getSystemPrompt() },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.5,
+        max_tokens: 2000,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      this.logger.error(`AI stream API error: ${errBody}`);
+      throw new BadRequestException('Failed to stream recipe from AI');
+    }
+
+    const reader = response.body as any;
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for await (const chunk of reader) {
+      buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') return;
+
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        } catch { /* skip malformed */ }
+      }
+    }
+
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data: ') && trimmed.slice(6) !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(trimmed.slice(6));
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        } catch { /* skip */ }
+      }
+    }
   }
 }

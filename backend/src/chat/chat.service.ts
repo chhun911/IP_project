@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { Response } from 'express';
 import { ChatDto } from './dto/chat.dto';
 import { DeepSeekService } from './services/deepseek.service';
 import { ChatDatabaseService } from './services/chat-database.service';
@@ -161,5 +162,47 @@ export class ChatService {
         conversationId: convId || null,
       };
     }
+  }
+
+  /**
+   * Stream chat response via SSE — tokens are written to `res` as they arrive.
+   * Returns metadata (conversationId, full text) after streaming completes.
+   */
+  async processChatStream(chatDto: ChatDto, res: Response): Promise<{ conversationId: number | null }> {
+    const { message, userId, conversationId } = chatDto;
+
+    if (!message) {
+      throw new BadRequestException('Message required');
+    }
+
+    // Resolve or create conversation
+    let convId = conversationId;
+    if (userId && !convId) {
+      const conv = await this.chatDatabaseService.createConversation(userId, message.slice(0, 50));
+      convId = conv.id;
+    }
+
+    // Save user message
+    if (convId) {
+      await this.chatDatabaseService.addMessage(convId, 'user', message);
+    }
+
+    // Stream from DeepSeek
+    let fullResponse = '';
+    for await (const chunk of this.deepSeekService.chatStream(message)) {
+      fullResponse += chunk;
+      res.write(`data: ${JSON.stringify({ type: 'token', content: chunk })}\n\n`);
+    }
+
+    // Save full AI response to DB
+    if (convId) {
+      await this.chatDatabaseService.addMessage(convId, 'assistant', fullResponse);
+      if (!conversationId) {
+        const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
+        await this.chatDatabaseService.updateConversationTitle(convId, title);
+      }
+    }
+
+    return { conversationId: convId || null };
   }
 }

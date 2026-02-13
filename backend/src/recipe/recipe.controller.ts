@@ -1,4 +1,5 @@
-import { Controller, Post, Delete, Get, Put, Body, Query, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Delete, Get, Put, Body, Query, Param, HttpCode, HttpStatus, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { RecipeService } from './recipe.service';
 import { GenerateRecipeDto, GeneratedRecipe } from './dto/recipe.dto';
 
@@ -14,6 +15,28 @@ export class RecipeController {
   @HttpCode(HttpStatus.OK)
   async generateRecipe(@Body() dto: GenerateRecipeDto): Promise<GeneratedRecipe> {
     return this.recipeService.generateRecipe(dto);
+  }
+
+  /**
+   * POST /api/recipes/generate/stream
+   * Stream recipe generation via SSE for real-time display
+   */
+  @Post('generate/stream')
+  async generateRecipeStream(@Body() dto: GenerateRecipeDto, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    try {
+      await this.recipeService.generateRecipeStream(dto, res);
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+    } catch (err: any) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message || 'Stream failed' })}\n\n`);
+    } finally {
+      res.end();
+    }
   }
 
   /**

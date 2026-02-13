@@ -162,48 +162,86 @@ const deleteRecipe = async (sessionId: string, event: Event) => {
   }
 }
 
-// API call
+// Streaming progress state
+const streamingText = ref('')
+const streamingPhase = ref<'idle' | 'generating' | 'images' | 'done'>('idle')
+
+// API call — uses streaming for real-time display
 async function generateRecipe() {
   if (!canSubmit.value) return
 
   isLoading.value = true
   error.value = null
+  recipe.value = null
+  streamingText.value = ''
+  streamingPhase.value = 'generating'
 
   try {
     const payload = mode.value === 'mealName'
       ? { mode: 'mealName', mealName: mealName.value.trim(), userId: props.user.id }
       : { mode: 'fromIngredients', ingredients: ingredientsList.value, userId: props.user.id }
 
-    const response = await fetch(`${API_BASE_URL}/api/recipes/generate`, {
+    const response = await fetch(`${API_BASE_URL}/api/recipes/generate/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}))
-      throw new Error(errData.message || `Request failed: ${response.status}`)
+      const errData = await response.text()
+      throw new Error(errData || `Request failed: ${response.status}`)
     }
 
-    const generatedRecipe = await response.json()
-    recipe.value = generatedRecipe
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
 
-    // Refresh history from DB (the backend already saved it)
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data: ')) continue
+        try {
+          const event = JSON.parse(trimmed.slice(6))
+          if (event.type === 'token') {
+            streamingText.value += event.content
+          } else if (event.type === 'status') {
+            streamingPhase.value = 'images'
+          } else if (event.type === 'recipe') {
+            // Final enriched recipe with images
+            recipe.value = event.data
+            streamingPhase.value = 'done'
+          } else if (event.type === 'error') {
+            throw new Error(event.message)
+          }
+        } catch (e: any) {
+          if (e.message && e.message !== 'Unexpected end of JSON input') {
+            throw e
+          }
+        }
+      }
+    }
+
+    // Refresh history & usage after success
     await loadRecipeHistory()
-
-    // Select the newest session
     if (recipeSessions.value.length > 0) {
-      const newest = recipeSessions.value[0] // sorted newest first
+      const newest = recipeSessions.value[0]
       currentSessionId.value = newest.id
     }
-
-    // Refresh usage count after successful generation
     await fetchImageUsage()
 
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to generate recipe'
   } finally {
     isLoading.value = false
+    streamingPhase.value = 'idle'
+    streamingText.value = ''
   }
 }
 
@@ -464,15 +502,21 @@ onMounted(() => {
       <button class="retry-btn" @click="generateRecipe">Retry</button>
     </div>
 
-    <!-- Loading State -->
+    <!-- Loading State with streaming preview -->
     <div v-if="isLoading" class="loading-state">
       <div class="loading-animation">
         <span>🍳</span>
         <span>🥘</span>
         <span>🍲</span>
       </div>
-      <p>Generating your recipe...</p>
-      <p class="loading-hint">This may take a few seconds</p>
+      <p v-if="streamingPhase === 'generating'">AI is writing your recipe...</p>
+      <p v-else-if="streamingPhase === 'images'">Fetching ingredient images...</p>
+      <p v-else>Generating your recipe...</p>
+      <p class="loading-hint" v-if="!streamingText">This may take a few seconds</p>
+      <!-- Live streaming preview -->
+      <div v-if="streamingText" class="streaming-preview">
+        <pre class="streaming-text">{{ streamingText }}</pre>
+      </div>
     </div>
 
     <!-- Recipe Display -->
@@ -1510,5 +1554,28 @@ onMounted(() => {
   .ingredients-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* Streaming preview styles */
+.streaming-preview {
+  margin-top: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.streaming-text {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #a0d0a0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  line-height: 1.5;
 }
 </style>

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 
 const emit = defineEmits<{
-  signup: [userData: { name: string; email: string }]
+  signup: [userData: { id: number; name: string; email: string }]
   login: []
 }>()
 
@@ -42,7 +42,8 @@ const handleSignUp = async () => {
       throw new Error('Sign up failed')
     }
 
-    emit('signup', { name: name.value, email: email.value })
+    const data = await response.json()
+    emit('signup', { id: data.data.id, name: data.data.name, email: data.data.email })
   } catch (err) {
     error.value = 'Failed to create account'
   } finally {

@@ -17,16 +17,30 @@ export class UserDatabaseService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(UserDatabaseService.name);
 
   async onModuleInit() {
-    this.pool = new Pool({
-      host: process.env.POSTGRES_HOST || 'localhost',
-      port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-      database: process.env.POSTGRES_DB || 'aicookbook',
-      user: process.env.POSTGRES_USER || 'postgres',
-      password: process.env.POSTGRES_PASSWORD || 'postgres',
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
+    const connectionString = process.env.DATABASE_URL;
+
+    if (connectionString) {
+      this.pool = new Pool({
+        connectionString,
+        ssl: { rejectUnauthorized: false },
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      });
+      this.logger.log('Connecting to Neon PostgreSQL (DATABASE_URL)');
+    } else {
+      this.pool = new Pool({
+        host: process.env.POSTGRES_HOST || 'localhost',
+        port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
+        database: process.env.POSTGRES_DB || 'aicookbook',
+        user: process.env.POSTGRES_USER || 'postgres',
+        password: process.env.POSTGRES_PASSWORD || 'postgres',
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      });
+      this.logger.log('Connecting to local PostgreSQL');
+    }
 
     await this.initializeSchema();
     this.logger.log('Users database schema initialized');

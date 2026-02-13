@@ -4,6 +4,7 @@ import { RecipeService } from './recipe.service';
 import { OpenAIService } from './services/openai.service';
 import { IngredientImageService } from './services/ingredient-image.service';
 import { DatabaseService } from './services/database.service';
+import { AiGenerationDatabaseService } from './services/ai-generation-database.service';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { AuthModule } from '../auth/auth.module';
     OpenAIService,
     IngredientImageService,
     DatabaseService,
+    AiGenerationDatabaseService,
   ],
   exports: [RecipeService],
 })

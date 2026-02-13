@@ -1,4 +1,4 @@
-import { Controller, Post, Delete, Get, Put, Body, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Delete, Get, Put, Body, Query, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { RecipeService } from './recipe.service';
 import { GenerateRecipeDto, GeneratedRecipe } from './dto/recipe.dto';
 
@@ -63,5 +63,45 @@ export class RecipeController {
       body.attributionLink,
     );
     return { message: 'Image override saved', data: result };
+  }
+
+  /**
+   * GET /api/recipes/history?userId=1
+   * Get recipe generation history for a user
+   */
+  @Get('history')
+  async getRecipeHistory(@Query('userId') userId: string) {
+    const history = await this.recipeService.getRecipeHistory(Number(userId));
+    return { success: true, history };
+  }
+
+  /**
+   * GET /api/recipes/history/:id?userId=1
+   * Get a single recipe generation
+   */
+  @Get('history/:id')
+  async getRecipeById(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+  ) {
+    const record = await this.recipeService.getRecipeById(Number(id), Number(userId));
+    if (!record) {
+      return { success: false, message: 'Recipe not found' };
+    }
+    return { success: true, record };
+  }
+
+  /**
+   * DELETE /api/recipes/history/:id?userId=1
+   * Delete a recipe generation record
+   */
+  @Delete('history/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteRecipeHistory(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+  ) {
+    const deleted = await this.recipeService.deleteRecipeHistory(Number(id), Number(userId));
+    return { success: deleted };
   }
 }

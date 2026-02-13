@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ChatDto } from './dto/chat.dto';
 import { DeepSeekService } from './services/deepseek.service';
+import { ChatDatabaseService } from './services/chat-database.service';
 
 export interface Recipe {
   title: string;
@@ -13,7 +14,10 @@ export interface Recipe {
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly deepSeekService: DeepSeekService) {}
+  constructor(
+    private readonly deepSeekService: DeepSeekService,
+    private readonly chatDatabaseService: ChatDatabaseService,
+  ) {}
 
   // Mock recipe database (kept for fallback)
   private recipes: Record<string, Recipe> = {
@@ -82,20 +86,43 @@ export class ChatService {
   };
 
   async processChat(chatDto: ChatDto) {
-    const { message } = chatDto;
+    const { message, userId, conversationId } = chatDto;
 
     if (!message) {
       throw new BadRequestException('Message required');
+    }
+
+    // Resolve or create conversation
+    let convId = conversationId;
+    if (userId && !convId) {
+      const conv = await this.chatDatabaseService.createConversation(userId, message.slice(0, 50));
+      convId = conv.id;
+    }
+
+    // Save user message
+    if (convId) {
+      await this.chatDatabaseService.addMessage(convId, 'user', message);
     }
 
     try {
       // Use DeepSeek AI to process the chat message
       const aiResponse = await this.deepSeekService.chat(message);
 
+      // Save AI response
+      if (convId) {
+        await this.chatDatabaseService.addMessage(convId, 'assistant', aiResponse.response);
+        // Update conversation title from first user message
+        if (!conversationId) {
+          const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
+          await this.chatDatabaseService.updateConversationTitle(convId, title);
+        }
+      }
+
       return {
         success: true,
         response: aiResponse.response,
-        recipe: null, // AI will include recipe info in the response text
+        recipe: null,
+        conversationId: convId || null,
       };
     } catch (error) {
       // Fallback to simple recipe matching if AI fails
@@ -122,10 +149,16 @@ export class ChatService {
         }
       }
 
+      // Save fallback response
+      if (convId) {
+        await this.chatDatabaseService.addMessage(convId, 'assistant', response);
+      }
+
       return {
         success: true,
         response,
         recipe: recipe || null,
+        conversationId: convId || null,
       };
     }
   }

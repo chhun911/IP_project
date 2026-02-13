@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { OpenAIService } from './services/openai.service';
 import { IngredientImageService } from './services/ingredient-image.service';
 import { DatabaseService } from './services/database.service';
+import { AiGenerationDatabaseService } from './services/ai-generation-database.service';
 import { UserDatabaseService } from '../auth/services/user-database.service';
 import { GenerateRecipeDto, GeneratedRecipe } from './dto/recipe.dto';
 import { SearchAlternativesResult, IngredientImageCache } from './interfaces/ingredient-image.interface';
@@ -16,6 +17,7 @@ export class RecipeService {
     private readonly openAIService: OpenAIService,
     private readonly ingredientImageService: IngredientImageService,
     private readonly databaseService: DatabaseService,
+    private readonly aiGenerationDb: AiGenerationDatabaseService,
     private readonly userDatabaseService: UserDatabaseService,
   ) {}
 
@@ -65,8 +67,46 @@ export class RecipeService {
       warnings: [...recipeData.warnings, ...imageWarnings],
     };
 
+    // Step 4: Save generation to DB
+    const prompt = dto.mode === 'mealName' ? dto.mealName : (dto.ingredients || []).join(', ');
+    const startTime = Date.now();
+    try {
+      await this.aiGenerationDb.recordGeneration({
+        userId: dto.userId,
+        generationType: 'recipe',
+        prompt: prompt || '',
+        result,
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        durationMs: Date.now() - startTime,
+        status: 'success',
+      });
+    } catch (err) {
+      this.logger.warn('Failed to save generation record', err);
+    }
+
     this.logger.log(`Recipe complete with ${ingredients.length} ingredients`);
     return result;
+  }
+
+  /**
+   * Get recipe generation history for a user
+   */
+  async getRecipeHistory(userId: number) {
+    return this.aiGenerationDb.getGenerationsByUser(userId, 'recipe');
+  }
+
+  /**
+   * Get a single recipe generation by ID
+   */
+  async getRecipeById(id: number, userId: number) {
+    return this.aiGenerationDb.getGenerationById(id, userId);
+  }
+
+  /**
+   * Delete a recipe generation record
+   */
+  async deleteRecipeHistory(id: number, userId: number) {
+    return this.aiGenerationDb.deleteGeneration(id, userId);
   }
 
   /**

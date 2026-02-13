@@ -19,7 +19,7 @@ interface ChatSession {
 }
 
 const props = defineProps<{
-  user: { name: string; email: string }
+  user: { id: number; name: string; email: string }
 }>()
 
 const emit = defineEmits<{
@@ -45,8 +45,8 @@ const sortedSessions = computed(() =>
   [...chatSessions.value].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
 )
 
-// Generate unique ID
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+// Generate unique ID (unused, kept for reference)
+// const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
 // Create new chat (clears the current chat without adding to history)
 const createNewChat = () => {
@@ -54,18 +54,50 @@ const createNewChat = () => {
   messages.value = []
 }
 
-// Select a chat session
-const selectChat = (sessionId: string) => {
+// Select a chat session — load messages from DB
+const selectChat = async (sessionId: string) => {
   currentSessionId.value = sessionId
   const session = chatSessions.value.find(s => s.id === sessionId)
   if (session) {
-    messages.value = [...session.messages]
+    // If messages already loaded in memory, use them
+    if (session.messages.length > 0) {
+      messages.value = [...session.messages]
+      return
+    }
+    // Otherwise load from DB
+    try {
+      const res = await fetch(`http://localhost:3001/api/chat/history/${sessionId}?userId=${props.user.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.conversation?.messages) {
+          const loaded: Message[] = data.conversation.messages.map((m: any) => ({
+            id: `db-${m.id}`,
+            type: m.role === 'user' ? 'user' : 'ai',
+            content: m.content,
+            timestamp: new Date(m.created_at),
+          }))
+          session.messages = loaded
+          messages.value = [...loaded]
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load conversation:', err)
+      messages.value = [...session.messages]
+    }
   }
 }
 
-// Delete a chat session
-const deleteChat = (sessionId: string, event: Event) => {
+// Delete a chat session — also delete from DB
+const deleteChat = async (sessionId: string, event: Event) => {
   event.stopPropagation()
+  // Delete from DB
+  try {
+    await fetch(`http://localhost:3001/api/chat/history/${sessionId}?userId=${props.user.id}`, {
+      method: 'DELETE',
+    })
+  } catch (err) {
+    console.error('Failed to delete conversation from DB:', err)
+  }
   const index = chatSessions.value.findIndex(s => s.id === sessionId)
   if (index !== -1) {
     chatSessions.value.splice(index, 1)
@@ -99,20 +131,7 @@ watch(messages, (newMessages) => {
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
 
-  // Create session if none exists (only when user sends first message)
-  if (!currentSessionId.value) {
-    const newSession: ChatSession = {
-      id: generateId(),
-      title: 'New Chat',
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-    chatSessions.value.push(newSession)
-    currentSessionId.value = newSession.id
-  }
-
-  // Add user message
+  // Add user message to UI immediately
   const userMsg: Message = {
     id: `msg-${messageId.value++}`,
     type: 'user',
@@ -126,13 +145,14 @@ const sendMessage = async () => {
   loading.value = true
 
   try {
-    // Call chat API
+    // Call chat API with userId and conversationId
     const response = await fetch('http://localhost:3001/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: query,
-        userId: props.user.email
+        userId: props.user.id,
+        conversationId: currentSessionId.value ? Number(currentSessionId.value) : undefined,
       })
     })
 
@@ -140,6 +160,19 @@ const sendMessage = async () => {
 
     const data = await response.json()
     
+    // If this was a new conversation, store the returned conversationId
+    if (data.conversationId && !currentSessionId.value) {
+      const newSession: ChatSession = {
+        id: String(data.conversationId),
+        title: query.slice(0, 30) + (query.length > 30 ? '...' : ''),
+        messages: [...messages.value],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      chatSessions.value.push(newSession)
+      currentSessionId.value = String(data.conversationId)
+    }
+
     // Add AI response
     const aiMsg: Message = {
       id: `msg-${messageId.value++}`,
@@ -162,9 +195,25 @@ const sendMessage = async () => {
   }
 }
 
-// Initialize with empty state
-if (chatSessions.value.length === 0) {
-  // Start fresh - user can create new chat when ready
+// Load chat history from Neon on mount
+const loadChatHistory = async () => {
+  try {
+    const res = await fetch(`http://localhost:3001/api/chat/history?userId=${props.user.id}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.success && data.conversations) {
+        chatSessions.value = data.conversations.map((c: any) => ({
+          id: String(c.id),
+          title: c.title || 'New Chat',
+          messages: [], // lazy-loaded when selected
+          createdAt: new Date(c.created_at),
+          updatedAt: new Date(c.updated_at),
+        }))
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load chat history:', err)
+  }
 }
 
 // Collapse sidebar on mobile initially
@@ -172,6 +221,7 @@ onMounted(() => {
   if (window.innerWidth <= 768) {
     sidebarCollapsed.value = true
   }
+  loadChatHistory()
 })
 </script>
 

@@ -110,8 +110,8 @@ const sortedSessions = computed(() =>
   [...recipeSessions.value].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 )
 
-// Generate unique ID
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+// Generate unique ID (unused, kept for reference)
+// const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
 // Create new recipe session
 const createNewRecipe = () => {
@@ -141,9 +141,17 @@ const selectRecipe = (sessionId: string) => {
   }
 }
 
-// Delete a recipe session
-const deleteRecipe = (sessionId: string, event: Event) => {
+// Delete a recipe session — also delete from DB
+const deleteRecipe = async (sessionId: string, event: Event) => {
   event.stopPropagation()
+  // Delete from DB
+  try {
+    await fetch(`http://localhost:3001/api/recipes/history/${sessionId}?userId=${props.user.id}`, {
+      method: 'DELETE',
+    })
+  } catch (err) {
+    console.error('Failed to delete recipe from DB:', err)
+  }
   const index = recipeSessions.value.findIndex(s => s.id === sessionId)
   if (index !== -1) {
     recipeSessions.value.splice(index, 1)
@@ -179,22 +187,14 @@ async function generateRecipe() {
     const generatedRecipe = await response.json()
     recipe.value = generatedRecipe
 
-    // Save to history
-    const queryText = mode.value === 'mealName' 
-      ? mealName.value.trim() 
-      : ingredientsList.value.join(', ')
-    
-    const newSession: RecipeSession = {
-      id: generateId(),
-      title: generatedRecipe.title || queryText.slice(0, 30),
-      mode: mode.value,
-      query: queryText,
-      recipe: generatedRecipe,
-      createdAt: new Date()
+    // Refresh history from DB (the backend already saved it)
+    await loadRecipeHistory()
+
+    // Select the newest session
+    if (recipeSessions.value.length > 0) {
+      const newest = recipeSessions.value[0] // sorted newest first
+      currentSessionId.value = newest.id
     }
-    
-    recipeSessions.value.push(newSession)
-    currentSessionId.value = newSession.id
 
     // Refresh usage count after successful generation
     await fetchImageUsage()
@@ -272,12 +272,35 @@ function closeImageModal() {
   alternativeImages.value = []
 }
 
+// Load recipe history from Neon on mount
+const loadRecipeHistory = async () => {
+  try {
+    const res = await fetch(`http://localhost:3001/api/recipes/history?userId=${props.user.id}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.success && data.history) {
+        recipeSessions.value = data.history.map((h: any) => ({
+          id: String(h.id),
+          title: h.result?.title || h.prompt?.slice(0, 30) || 'Untitled',
+          mode: (h.prompt && h.prompt.includes(',')) ? 'fromIngredients' as RecipeMode : 'mealName' as RecipeMode,
+          query: h.prompt || '',
+          recipe: h.result as GeneratedRecipe | null,
+          createdAt: new Date(h.created_at),
+        }))
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load recipe history:', err)
+  }
+}
+
 // Collapse sidebar on mobile initially
 onMounted(() => {
   if (window.innerWidth <= 768) {
     sidebarCollapsed.value = true
   }
   fetchImageUsage()
+  loadRecipeHistory()
 })
 </script>
 

@@ -76,7 +76,7 @@ export class RecipeService {
         generationType: 'recipe',
         prompt: prompt || '',
         result,
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: process.env.OPENAI_MODEL || 'deepseek-chat',
         durationMs: Date.now() - startTime,
         status: 'success',
       });

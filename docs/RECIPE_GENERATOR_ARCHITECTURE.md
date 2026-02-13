@@ -29,14 +29,14 @@
 │  ┌──────────────────────────▼──────────────────────────────────────┐   │
 │  │                     RecipeService                                │   │
 │  │  1. Orchestrates recipe generation                               │   │
-│  │  2. Combines OpenAI response + ingredient images                 │   │
-│  └──────────┬───────────────────────────────────────┬──────────────┘   │
+│  │  2. Combines DeepSeek response + ingredient images               │   │
+│  └──────────┴────────────────────────────────────────┴──────────────┘   │
 │             │                                       │                   │
-│  ┌──────────▼──────────┐              ┌─────────────▼──────────────┐   │
-│  │   OpenAIService     │              │  IngredientImageService    │   │
+│  ┌──────────┴──────────┐              ┌─────────────┴──────────────────┐   │
+│  │  DeepSeekService    │              │  IngredientImageService    │   │
 │  │                     │              │                            │   │
 │  │ • Build prompts     │              │ • Normalize ingredient     │   │
-│  │ • Call GPT-4o-mini  │              │   names                    │   │
+│  │ • Call DeepSeek API │              │   names                    │   │
 │  │ • Validate JSON     │              │ • Check cache first        │   │
 │  │ • Return recipe     │              │ • Fetch from Pixabay       │   │
 │  │   structure         │              │ • Store in cache           │   │
@@ -47,8 +47,8 @@
               │                                       │
               ▼                                       ▼
 ┌─────────────────────┐                 ┌───────────────────────────────┐
-│     OpenAI API      │                 │        Pixabay API            │
-│   (gpt-4o-mini)     │                 │    (Image Search)             │
+│   DeepSeek API      │                 │        Pixabay API            │
+│                     │                 │    (Image Search)             │
 └─────────────────────┘                 └───────────────────────────────┘
                                                       │
                                                       │ Cache lookup/store
@@ -69,7 +69,7 @@
 2. Vue component sends POST to `/api/recipes/generate`
 3. RecipeController validates DTO
 4. RecipeService orchestrates:
-   - Calls OpenAIService → generates recipe JSON
+   - Calls DeepSeekService → generates recipe JSON
    - Calls IngredientImageService → resolves images for each ingredient
 5. Response returned with complete recipe + ingredient images
 
@@ -104,7 +104,7 @@ api-gateway/
 │       ├── interfaces/
 │       │   └── ingredient-image.interface.ts
 │       └── services/
-│           ├── openai.service.ts
+│       │   ├── deepseek.service.ts
 │           ├── ingredient-image.service.ts
 │           └── database.service.ts
 ├── .env.example
@@ -178,8 +178,8 @@ api-gateway/
 
 | Variable               | Description                          | Required |
 |-----------------------|--------------------------------------|----------|
-| `OPENAI_API_KEY`      | OpenAI API key for recipe generation | Yes      |
-| `OPENAI_MODEL`        | OpenAI model (default: gpt-4o-mini)  | No       |
+| `AI_API_KEY`          | DeepSeek API key for recipe generation | Yes      |
+| `AI_MODEL`            | AI model (default: deepseek-chat)  | No       |
 | `PIXABAY_API_KEY`     | Pixabay API key                      | Yes      |
 | `POSTGRES_HOST`       | PostgreSQL host                      | Yes      |
 | `POSTGRES_PORT`       | PostgreSQL port (default: 5432)      | No       |
@@ -191,8 +191,8 @@ api-gateway/
 
 ## Rate Limiting & Cost Control
 
-### OpenAI
-- **Model:** `gpt-4o-mini` (cost-effective, ~$0.15/1M input tokens)
+### DeepSeek
+- **Model:** `deepseek-chat` (cost-effective)
 - **Max tokens:** 2000 per request
 - **Rate limiting:** Implement request queuing if needed
 - **Cost estimate:** ~$0.01-0.02 per recipe generation
@@ -226,7 +226,7 @@ api-gateway/
 2. **Input validation:** DTOs validated with class-validator
 3. **SQL injection:** Parameterized queries via pg library
 4. **CORS:** Configure appropriately for production
-5. **Food safety:** OpenAI prompted to include safety warnings
+5. **Food safety:** DeepSeek prompted to include safety warnings
 
 ## Running the Application
 

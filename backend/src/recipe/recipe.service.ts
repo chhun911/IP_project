@@ -168,14 +168,19 @@ export class RecipeService {
 
     for await (const chunk of this.openAIService.generateRecipeStream(dto.mode, dto.mealName, dto.ingredients)) {
       fullJson += chunk;
-      res.write(`data: ${JSON.stringify({ type: 'token', content: chunk })}\n\n`);
+      // Send progress events (not raw tokens) so frontend can show status
+      res.write(`data: ${JSON.stringify({ type: 'progress', length: fullJson.length })}\n\n`);
     }
 
-    // Phase 2: Parse recipe JSON, resolve images, send final result
+    // Phase 2: Strip markdown code fences if present, then parse JSON
+    let cleanJson = fullJson.trim();
+    // Remove ```json ... ``` wrapping
+    cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+
     res.write(`data: ${JSON.stringify({ type: 'status', message: 'Fetching ingredient images...' })}\n\n`);
 
     try {
-      const recipeData = JSON.parse(fullJson);
+      const recipeData = JSON.parse(cleanJson);
       const validated = {
         title: recipeData.title || 'Unnamed Recipe',
         servings: typeof recipeData.servings === 'number' ? recipeData.servings : 2,

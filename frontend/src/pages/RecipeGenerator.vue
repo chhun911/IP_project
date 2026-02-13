@@ -163,8 +163,8 @@ const deleteRecipe = async (sessionId: string, event: Event) => {
 }
 
 // Streaming progress state
-const streamingText = ref('')
 const streamingPhase = ref<'idle' | 'generating' | 'images' | 'done'>('idle')
+const streamingProgress = ref(0)
 
 // API call — uses streaming for real-time display
 async function generateRecipe() {
@@ -173,7 +173,7 @@ async function generateRecipe() {
   isLoading.value = true
   error.value = null
   recipe.value = null
-  streamingText.value = ''
+  streamingProgress.value = 0
   streamingPhase.value = 'generating'
 
   try {
@@ -209,8 +209,8 @@ async function generateRecipe() {
         if (!trimmed.startsWith('data: ')) continue
         try {
           const event = JSON.parse(trimmed.slice(6))
-          if (event.type === 'token') {
-            streamingText.value += event.content
+          if (event.type === 'progress') {
+            streamingProgress.value = Math.min(event.length || 0, 2000)
           } else if (event.type === 'status') {
             streamingPhase.value = 'images'
           } else if (event.type === 'recipe') {
@@ -241,7 +241,7 @@ async function generateRecipe() {
   } finally {
     isLoading.value = false
     streamingPhase.value = 'idle'
-    streamingText.value = ''
+    streamingProgress.value = 0
   }
 }
 
@@ -502,7 +502,7 @@ onMounted(() => {
       <button class="retry-btn" @click="generateRecipe">Retry</button>
     </div>
 
-    <!-- Loading State with streaming preview -->
+    <!-- Loading State with progress bar -->
     <div v-if="isLoading" class="loading-state">
       <div class="loading-animation">
         <span>🍳</span>
@@ -512,11 +512,12 @@ onMounted(() => {
       <p v-if="streamingPhase === 'generating'">AI is writing your recipe...</p>
       <p v-else-if="streamingPhase === 'images'">Fetching ingredient images...</p>
       <p v-else>Generating your recipe...</p>
-      <p class="loading-hint" v-if="!streamingText">This may take a few seconds</p>
-      <!-- Live streaming preview -->
-      <div v-if="streamingText" class="streaming-preview">
-        <pre class="streaming-text">{{ streamingText }}</pre>
+      <!-- Progress bar -->
+      <div v-if="streamingProgress > 0" class="stream-progress-bar">
+        <div class="stream-progress-fill" :style="{ width: Math.min((streamingProgress / 1500) * 100, 95) + '%' }"></div>
       </div>
+      <p class="loading-hint" v-if="streamingProgress === 0">This may take a few seconds</p>
+      <p class="loading-hint" v-else>Almost there...</p>
     </div>
 
     <!-- Recipe Display -->
@@ -1556,26 +1557,21 @@ onMounted(() => {
   }
 }
 
-/* Streaming preview styles */
-.streaming-preview {
+/* Progress bar styles */
+.stream-progress-bar {
   margin-top: 16px;
-  max-height: 300px;
-  overflow-y: auto;
-  background: #1a1a2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 16px;
   width: 100%;
-  max-width: 600px;
+  max-width: 400px;
+  height: 6px;
+  background: #1a1a2e;
+  border-radius: 3px;
+  overflow: hidden;
 }
 
-.streaming-text {
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  color: #a0d0a0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-  line-height: 1.5;
+.stream-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b6b, #ffd93d);
+  border-radius: 3px;
+  transition: width 0.3s ease;
 }
 </style>

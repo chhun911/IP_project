@@ -282,7 +282,7 @@ async function selectAlternativeImage(alt: AlternativeImage) {
   if (!recipe.value || imageModalIndex.value < 0) return
 
   try {
-    // Save override to backend
+    // Save override to backend (include generationId so the saved recipe snapshot is updated too)
     await fetch(`${API_BASE_URL}/api/recipes/ingredient-image`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -291,6 +291,8 @@ async function selectAlternativeImage(alt: AlternativeImage) {
         imageUrl: alt.imageUrl,
         attributionText: alt.attributionText,
         attributionLink: alt.attributionLink,
+        generationId: currentSessionId.value ? Number(currentSessionId.value) : undefined,
+        userId: props.user.id,
       }),
     })
 
@@ -299,6 +301,19 @@ async function selectAlternativeImage(alt: AlternativeImage) {
     ing.imageUrl = alt.imageUrl
     ing.imageSource = 'user_override'
     ing.attribution = { text: alt.attributionText, link: alt.attributionLink }
+
+    // Also update the session in the local list so sidebar/history stays in sync
+    if (currentSessionId.value) {
+      const session = recipeSessions.value.find(s => s.id === currentSessionId.value)
+      if (session && session.recipe) {
+        const sessionIng = session.recipe.ingredients[imageModalIndex.value]
+        if (sessionIng) {
+          sessionIng.imageUrl = alt.imageUrl
+          sessionIng.imageSource = 'user_override'
+          sessionIng.attribution = { text: alt.attributionText, link: alt.attributionLink }
+        }
+      }
+    }
 
     showImageModal.value = false
   } catch (err) {

@@ -127,21 +127,45 @@ export class RecipeService {
   }
 
   /**
-   * User override: manually set the image for an ingredient
+   * User override: manually set the image for an ingredient.
+   * Also updates the saved recipe snapshot in ai_generations if generationId is provided.
    */
   async overrideIngredientImage(
     ingredientName: string,
     imageUrl: string,
     attributionText: string,
     attributionLink: string,
+    generationId?: number,
+    userId?: number,
   ): Promise<IngredientImageCache> {
     this.logger.log(`Overriding image for: ${ingredientName}`);
-    return this.ingredientImageService.overrideIngredientImage(
+    const result = await this.ingredientImageService.overrideIngredientImage(
       ingredientName,
       imageUrl,
       attributionText,
       attributionLink,
     );
+
+    // Also update the saved recipe snapshot in ai_generations
+    if (generationId && userId) {
+      try {
+        const updated = await this.aiGenerationDb.updateIngredientImageInResult(
+          generationId,
+          userId,
+          ingredientName,
+          imageUrl,
+          attributionText,
+          attributionLink,
+        );
+        if (updated) {
+          this.logger.log(`Updated image in ai_generations record ${generationId} for ingredient: ${ingredientName}`);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to update ai_generations record for image override`, err);
+      }
+    }
+
+    return result;
   }
 
   /**

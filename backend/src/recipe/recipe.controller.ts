@@ -77,6 +77,8 @@ export class RecipeController {
       imageUrl: string;
       attributionText: string;
       attributionLink: string;
+      generationId?: number;
+      userId?: number;
     },
   ) {
     const result = await this.recipeService.overrideIngredientImage(
@@ -84,6 +86,8 @@ export class RecipeController {
       body.imageUrl,
       body.attributionText,
       body.attributionLink,
+      body.generationId,
+      body.userId,
     );
     return { message: 'Image override saved', data: result };
   }

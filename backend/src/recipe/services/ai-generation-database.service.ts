@@ -158,4 +158,45 @@ export class AiGenerationDatabaseService implements OnModuleInit, OnModuleDestro
     );
     return (result.rowCount ?? 0) > 0;
   }
+
+  /**
+   * Update ingredient image inside the saved recipe JSONB.
+   * Finds matching ingredients by name and updates their imageUrl, imageSource, and attribution.
+   */
+  async updateIngredientImageInResult(
+    generationId: number,
+    userId: number,
+    ingredientName: string,
+    imageUrl: string,
+    attributionText: string,
+    attributionLink: string,
+  ): Promise<boolean> {
+    // Fetch the current result JSONB
+    const row = await this.getGenerationById(generationId, userId);
+    if (!row || !row.result) return false;
+
+    const result = row.result;
+    const normalizedTarget = ingredientName.toLowerCase().trim();
+    let updated = false;
+
+    if (Array.isArray(result.ingredients)) {
+      for (const ing of result.ingredients) {
+        if (ing.name && ing.name.toLowerCase().trim() === normalizedTarget) {
+          ing.imageUrl = imageUrl;
+          ing.imageSource = 'user_override';
+          ing.attribution = { text: attributionText, link: attributionLink };
+          updated = true;
+        }
+      }
+    }
+
+    if (!updated) return false;
+
+    // Write updated JSONB back
+    const updateResult = await this.pool.query(
+      `UPDATE ai_generations SET result = $1 WHERE id = $2 AND user_id = $3`,
+      [JSON.stringify(result), generationId, userId],
+    );
+    return (updateResult.rowCount ?? 0) > 0;
+  }
 }

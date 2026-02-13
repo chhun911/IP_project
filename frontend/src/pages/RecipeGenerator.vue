@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { API_BASE_URL } from '../config'
 
 // Types
 interface IngredientAttribution {
@@ -58,7 +59,7 @@ const usageLimitReached = computed(() => imageUsageCount.value >= imageUsageLimi
 
 const fetchImageUsage = async () => {
   try {
-    const response = await fetch(`http://localhost:3001/api/auth/image-usage?userId=${props.user.id}`)
+    const response = await fetch(`${API_BASE_URL}/api/auth/image-usage?userId=${props.user.id}`)
     if (response.ok) {
       const data = await response.json()
       imageUsageCount.value = data.data.used
@@ -146,7 +147,7 @@ const deleteRecipe = async (sessionId: string, event: Event) => {
   event.stopPropagation()
   // Delete from DB
   try {
-    await fetch(`http://localhost:3001/api/recipes/history/${sessionId}?userId=${props.user.id}`, {
+    await fetch(`${API_BASE_URL}/api/recipes/history/${sessionId}?userId=${props.user.id}`, {
       method: 'DELETE',
     })
   } catch (err) {
@@ -173,7 +174,7 @@ async function generateRecipe() {
       ? { mode: 'mealName', mealName: mealName.value.trim(), userId: props.user.id }
       : { mode: 'fromIngredients', ingredients: ingredientsList.value, userId: props.user.id }
 
-    const response = await fetch('http://localhost:3001/api/recipes/generate', {
+    const response = await fetch(`${API_BASE_URL}/api/recipes/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -227,7 +228,7 @@ async function openImageAlternatives(ingredientName: string, index: number) {
 
   try {
     const response = await fetch(
-      `http://localhost:3001/api/recipes/ingredient-alternatives?name=${encodeURIComponent(ingredientName)}`
+      `${API_BASE_URL}/api/recipes/ingredient-alternatives?name=${encodeURIComponent(ingredientName)}`
     )
     if (!response.ok) throw new Error('Failed to fetch alternatives')
     const data = await response.json()
@@ -244,7 +245,7 @@ async function selectAlternativeImage(alt: AlternativeImage) {
 
   try {
     // Save override to backend
-    await fetch('http://localhost:3001/api/recipes/ingredient-image', {
+    await fetch(`${API_BASE_URL}/api/recipes/ingredient-image`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -275,7 +276,7 @@ function closeImageModal() {
 // Load recipe history from Neon on mount
 const loadRecipeHistory = async () => {
   try {
-    const res = await fetch(`http://localhost:3001/api/recipes/history?userId=${props.user.id}`)
+    const res = await fetch(`${API_BASE_URL}/api/recipes/history?userId=${props.user.id}`)
     if (res.ok) {
       const data = await res.json()
       if (data.success && data.history) {

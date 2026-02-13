@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { API_BASE_URL } from '../config'
 
 const emit = defineEmits<{
   login: [userData: { id: number; name: string; email: string }]
@@ -22,7 +23,7 @@ const handleLogin = async () => {
 
   try {
     // Call login API
-    const response = await fetch('http://localhost:3001/api/auth/login', {
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.value, password: password.value })

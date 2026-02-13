@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import RecipeDisplay from '../components/RecipeDisplay.vue'
+import { API_BASE_URL } from '../config'
 
 interface Message {
   id: string
@@ -66,7 +67,7 @@ const selectChat = async (sessionId: string) => {
     }
     // Otherwise load from DB
     try {
-      const res = await fetch(`http://localhost:3001/api/chat/history/${sessionId}?userId=${props.user.id}`)
+      const res = await fetch(`${API_BASE_URL}/api/chat/history/${sessionId}?userId=${props.user.id}`)
       if (res.ok) {
         const data = await res.json()
         if (data.success && data.conversation?.messages) {
@@ -92,7 +93,7 @@ const deleteChat = async (sessionId: string, event: Event) => {
   event.stopPropagation()
   // Delete from DB
   try {
-    await fetch(`http://localhost:3001/api/chat/history/${sessionId}?userId=${props.user.id}`, {
+    await fetch(`${API_BASE_URL}/api/chat/history/${sessionId}?userId=${props.user.id}`, {
       method: 'DELETE',
     })
   } catch (err) {
@@ -146,7 +147,7 @@ const sendMessage = async () => {
 
   try {
     // Call chat API with userId and conversationId
-    const response = await fetch('http://localhost:3001/api/chat', {
+    const response = await fetch(`${API_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -198,7 +199,7 @@ const sendMessage = async () => {
 // Load chat history from Neon on mount
 const loadChatHistory = async () => {
   try {
-    const res = await fetch(`http://localhost:3001/api/chat/history?userId=${props.user.id}`)
+    const res = await fetch(`${API_BASE_URL}/api/chat/history?userId=${props.user.id}`)
     if (res.ok) {
       const data = await res.json()
       if (data.success && data.conversations) {

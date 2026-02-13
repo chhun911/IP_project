@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import { API_BASE_URL } from '../config'
 
 const props = defineProps<{
   user: { id: number; name: string; email: string }
@@ -23,7 +24,7 @@ const imageUsageLimit = ref(5)
 
 const fetchImageUsage = async () => {
   try {
-    const response = await fetch(`http://localhost:3001/api/auth/image-usage?userId=${props.user.id}`)
+    const response = await fetch(`${API_BASE_URL}/api/auth/image-usage?userId=${props.user.id}`)
     if (response.ok) {
       const data = await response.json()
       imageUsageCount.value = data.data.used

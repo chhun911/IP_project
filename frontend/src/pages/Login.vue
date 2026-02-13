@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 
 const emit = defineEmits<{
-  login: [userData: { name: string; email: string }]
+  login: [userData: { id: string; name: string; email: string }]
   signup: []
 }>()
 

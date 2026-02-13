@@ -1,9 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { OpenAIService } from './services/openai.service';
 import { IngredientImageService } from './services/ingredient-image.service';
 import { DatabaseService } from './services/database.service';
+import { UserDatabaseService } from '../auth/services/user-database.service';
 import { GenerateRecipeDto, GeneratedRecipe } from './dto/recipe.dto';
 import { SearchAlternativesResult, IngredientImageCache } from './interfaces/ingredient-image.interface';
+
+const MAX_IMAGE_GENERATIONS = 5;
 
 @Injectable()
 export class RecipeService {
@@ -13,6 +16,7 @@ export class RecipeService {
     private readonly openAIService: OpenAIService,
     private readonly ingredientImageService: IngredientImageService,
     private readonly databaseService: DatabaseService,
+    private readonly userDatabaseService: UserDatabaseService,
   ) {}
 
   /**
@@ -20,6 +24,16 @@ export class RecipeService {
    */
   async generateRecipe(dto: GenerateRecipeDto): Promise<GeneratedRecipe> {
     this.logger.log(`Generating recipe - Mode: ${dto.mode}`);
+
+    // Enforce image generation limit if userId is provided
+    if (dto.userId) {
+      const currentCount = await this.userDatabaseService.getImageGenerationCount(dto.userId);
+      if (currentCount >= MAX_IMAGE_GENERATIONS) {
+        throw new ForbiddenException(
+          `You have reached the maximum of ${MAX_IMAGE_GENERATIONS} free AI image generations. Upgrade your plan for unlimited access.`,
+        );
+      }
+    }
 
     // Step 1: Generate recipe text using OpenAI
     const recipeData = await this.openAIService.generateRecipe(
@@ -33,6 +47,12 @@ export class RecipeService {
     // Step 2: Resolve ingredient images with scoring + caching
     const { ingredients, warnings: imageWarnings } = 
       await this.ingredientImageService.resolveIngredientImages(recipeData.ingredients);
+
+    // Increment usage count after successful generation
+    if (dto.userId) {
+      const newCount = await this.userDatabaseService.incrementImageGenerationCount(dto.userId);
+      this.logger.log(`User ${dto.userId} image generation count: ${newCount}/${MAX_IMAGE_GENERATIONS}`);
+    }
 
     // Step 3: Combine results
     const result: GeneratedRecipe = {

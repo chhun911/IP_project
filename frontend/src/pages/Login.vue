@@ -33,7 +33,7 @@ const handleLogin = async () => {
     }
 
     const data = await response.json()
-    emit('login', { name: data.data.name, email: data.data.email })
+    emit('login', { id: data.data.id, name: data.data.name, email: data.data.email })
   } catch (err) {
     error.value = 'Invalid email or password'
   } finally {

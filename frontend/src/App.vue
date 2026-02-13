@@ -10,7 +10,7 @@ type Page = 'login' | 'signup' | 'chat' | 'settings' | 'recipes'
 
 const currentPage = ref<Page>('login')
 const isAuthenticated = ref(false)
-const user = ref<{ name: string; email: string } | null>(null)
+const user = ref<{ id: number; name: string; email: string } | null>(null)
 
 const goToSignUp = () => currentPage.value = 'signup'
 const goToLogin = () => currentPage.value = 'login'
@@ -27,13 +27,13 @@ const resetThemeToDefaults = () => {
   root.style.setProperty('--accent-color', '#ff6b6b')
 }
 
-const handleLoginSuccess = (userData: { name: string; email: string }) => {
+const handleLoginSuccess = (userData: { id: number; name: string; email: string }) => {
   user.value = userData
   isAuthenticated.value = true
   currentPage.value = 'chat'
 }
 
-const handleSignUpSuccess = (userData: { name: string; email: string }) => {
+const handleSignUpSuccess = (userData: { id: number; name: string; email: string }) => {
   user.value = userData
   isAuthenticated.value = true
   currentPage.value = 'chat'
@@ -86,10 +86,11 @@ const handleLogout = () => {
         @settings="currentPage = 'settings'"
         @logout="handleLogout"
       />
-      <RecipeGenerator v-show="currentPage === 'recipes'" />
+      <RecipeGenerator v-show="currentPage === 'recipes'" :user="user!" />
       <Settings 
         v-show="currentPage === 'settings'" 
         :user="user!" 
+        :visible="currentPage === 'settings'"
         @back="currentPage = 'chat'"
         @logout="handleLogout"
       />

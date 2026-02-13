@@ -42,8 +42,8 @@ const handleSignUp = async () => {
       throw new Error('Sign up failed')
     }
 
-    await response.json()
-    emit('signup', { name: name.value, email: email.value })
+    const data = await response.json()
+    emit('signup', { id: data.data.id, name: name.value, email: email.value })
   } catch (err) {
     error.value = 'Failed to create account'
   } finally {

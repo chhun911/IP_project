@@ -47,6 +47,28 @@ interface AlternativeImage {
 
 type RecipeMode = 'mealName' | 'fromIngredients'
 
+const props = defineProps<{
+  user: { id: number; name: string; email: string }
+}>()
+
+// Usage tracking
+const imageUsageCount = ref(0)
+const imageUsageLimit = ref(5)
+const usageLimitReached = computed(() => imageUsageCount.value >= imageUsageLimit.value)
+
+const fetchImageUsage = async () => {
+  try {
+    const response = await fetch(`http://localhost:3001/api/auth/image-usage?userId=${props.user.id}`)
+    if (response.ok) {
+      const data = await response.json()
+      imageUsageCount.value = data.data.used
+      imageUsageLimit.value = data.data.limit
+    }
+  } catch (err) {
+    console.error('Failed to fetch image usage:', err)
+  }
+}
+
 // Sidebar state
 const sidebarCollapsed = ref(false)
 const recipeSessions = ref<RecipeSession[]>([])
@@ -70,6 +92,7 @@ const ingredientsList = computed(() => {
 
 const canSubmit = computed(() => {
   if (isLoading.value) return false
+  if (usageLimitReached.value) return false
   if (mode.value === 'mealName') return mealName.value.trim().length > 0
   return ingredientsList.value.length > 0
 })
@@ -139,8 +162,8 @@ async function generateRecipe() {
 
   try {
     const payload = mode.value === 'mealName'
-      ? { mode: 'mealName', mealName: mealName.value.trim() }
-      : { mode: 'fromIngredients', ingredients: ingredientsList.value }
+      ? { mode: 'mealName', mealName: mealName.value.trim(), userId: props.user.id }
+      : { mode: 'fromIngredients', ingredients: ingredientsList.value, userId: props.user.id }
 
     const response = await fetch('http://localhost:3001/api/recipes/generate', {
       method: 'POST',
@@ -172,6 +195,9 @@ async function generateRecipe() {
     
     recipeSessions.value.push(newSession)
     currentSessionId.value = newSession.id
+
+    // Refresh usage count after successful generation
+    await fetchImageUsage()
 
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to generate recipe'
@@ -251,6 +277,7 @@ onMounted(() => {
   if (window.innerWidth <= 768) {
     sidebarCollapsed.value = true
   }
+  fetchImageUsage()
 })
 </script>
 
@@ -339,6 +366,12 @@ onMounted(() => {
         <h1 class="recipe-header-title">🍳 AI Recipe Generator</h1>
       </div>
       <div class="recipe-generator">
+    <!-- Usage Banner -->
+    <div class="usage-banner" :class="{ 'limit-reached': usageLimitReached }">
+      <span v-if="usageLimitReached">You have used all {{ imageUsageLimit }} free AI image generations.</span>
+      <span v-else>AI Image Generation: {{ imageUsageCount }} / {{ imageUsageLimit }} used</span>
+    </div>
+
     <!-- Input Section -->
     <div class="input-section">
       <!-- Mode Toggle -->
@@ -395,6 +428,7 @@ onMounted(() => {
         @click="generateRecipe"
       >
         <span v-if="isLoading" class="loading-spinner"></span>
+        <span v-else-if="usageLimitReached">Usage Limit Reached</span>
         <span v-else>✨ Generate Recipe</span>
       </button>
     </div>
@@ -542,6 +576,24 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.usage-banner {
+  padding: 10px 16px;
+  background: rgba(0, 123, 255, 0.1);
+  border: 1px solid rgba(0, 123, 255, 0.3);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.usage-banner.limit-reached {
+  background: rgba(255, 68, 68, 0.1);
+  border-color: #ff4444;
+  color: #ff4444;
+  font-weight: 600;
+}
+
 .recipe-layout {
   display: flex;
   flex: 1;

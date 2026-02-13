@@ -2,7 +2,8 @@
 import { ref, watch, onMounted } from 'vue'
 
 const props = defineProps<{
-  user: { name: string; email: string }
+  user: { id: number; name: string; email: string }
+  visible: boolean
 }>()
 
 const emit = defineEmits<{
@@ -17,6 +18,21 @@ const language = ref('Auto-detect')
 const notifications = ref('push')
 const showDeleteConfirm = ref(false)
 const showDeleteAccountConfirm = ref(false)
+const imageUsageCount = ref(0)
+const imageUsageLimit = ref(5)
+
+const fetchImageUsage = async () => {
+  try {
+    const response = await fetch(`http://localhost:3001/api/auth/image-usage?userId=${props.user.id}`)
+    if (response.ok) {
+      const data = await response.json()
+      imageUsageCount.value = data.data.used
+      imageUsageLimit.value = data.data.limit
+    }
+  } catch (err) {
+    console.error('Failed to fetch image usage:', err)
+  }
+}
 
 // Load settings from localStorage
 onMounted(() => {
@@ -33,6 +49,16 @@ onMounted(() => {
   // Apply initial theme
   applyTheme(appearance.value)
   applyAccentColor(accentColor.value)
+  
+  // Fetch image usage count
+  fetchImageUsage()
+})
+
+// Re-fetch usage whenever the settings page becomes visible
+watch(() => props.visible, (isVisible) => {
+  if (isVisible) {
+    fetchImageUsage()
+  }
 })
 
 // Watch for appearance changes
@@ -250,7 +276,11 @@ const handleLogout = () => {
               <h3>AI CookBook</h3>
               <button class="btn-manage">Manage</button>
             </div>
-            <p class="usage">1 out of 5 free use</p>
+            <p class="usage">{{ imageUsageCount }} out of {{ imageUsageLimit }} free use</p>
+          </div>
+
+          <div v-if="imageUsageCount >= imageUsageLimit" class="usage-warning">
+            You have reached the maximum number of free AI image generations.
           </div>
 
           <div class="account-section">
@@ -601,5 +631,16 @@ const handleLogout = () => {
 
 .btn-confirm:hover {
   background: #cc3333;
+}
+
+.usage-warning {
+  padding: 12px 16px;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid #ff4444;
+  border-radius: 8px;
+  color: #ff4444;
+  font-size: 13px;
+  margin-bottom: 20px;
+  text-align: center;
 }
 </style>

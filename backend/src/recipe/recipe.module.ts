@@ -4,8 +4,10 @@ import { RecipeService } from './recipe.service';
 import { OpenAIService } from './services/openai.service';
 import { IngredientImageService } from './services/ingredient-image.service';
 import { DatabaseService } from './services/database.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+  imports: [AuthModule],
   controllers: [RecipeController],
   providers: [
     RecipeService,

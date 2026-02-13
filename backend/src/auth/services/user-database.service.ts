@@ -6,6 +6,7 @@ export interface UserRow {
   name: string;
   email: string;
   password_hash: string;
+  image_generation_count: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -47,9 +48,15 @@ export class UserDatabaseService implements OnModuleInit, OnModuleDestroy {
           name VARCHAR(255) NOT NULL,
           email VARCHAR(255) UNIQUE NOT NULL,
           password_hash VARCHAR(200) NOT NULL,
+          image_generation_count INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+      `);
+
+      // Add image_generation_count column if it doesn't exist (for existing tables)
+      await client.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS image_generation_count INTEGER DEFAULT 0;
       `);
 
       await client.query(`
@@ -99,5 +106,29 @@ export class UserDatabaseService implements OnModuleInit, OnModuleDestroy {
       [name, email, passwordHash],
     );
     return result.rows[0];
+  }
+
+  /**
+   * Get the image generation usage count for a user.
+   */
+  async getImageGenerationCount(userId: number): Promise<number> {
+    const result = await this.pool.query<{ image_generation_count: number }>(
+      'SELECT image_generation_count FROM users WHERE id = $1',
+      [userId],
+    );
+    return result.rows[0]?.image_generation_count ?? 0;
+  }
+
+  /**
+   * Increment the image generation count for a user. Returns the new count.
+   */
+  async incrementImageGenerationCount(userId: number): Promise<number> {
+    const result = await this.pool.query<{ image_generation_count: number }>(
+      `UPDATE users SET image_generation_count = image_generation_count + 1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING image_generation_count`,
+      [userId],
+    );
+    return result.rows[0]?.image_generation_count ?? 0;
   }
 }

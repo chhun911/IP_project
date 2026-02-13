@@ -106,4 +106,16 @@ export class AuthService {
       data: { id: user.id, name: user.name, email: user.email },
     };
   }
+
+  async getImageUsage(userId: number) {
+    const count = await this.userDb.getImageGenerationCount(userId);
+    return {
+      success: true,
+      data: {
+        used: count,
+        limit: 5,
+        remaining: Math.max(0, 5 - count),
+      },
+    };
+  }
 }

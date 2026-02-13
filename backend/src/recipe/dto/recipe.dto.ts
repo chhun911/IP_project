@@ -1,4 +1,4 @@
-import { IsString, IsArray, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsArray, IsOptional, IsEnum, IsNumber } from 'class-validator';
 
 export enum RecipeMode {
   MEAL_NAME = 'mealName',
@@ -17,6 +17,10 @@ export class GenerateRecipeDto {
   @IsArray()
   @IsString({ each: true })
   ingredients?: string[];
+
+  @IsOptional()
+  @IsNumber()
+  userId?: number;
 }
 
 export interface IngredientAttribution {

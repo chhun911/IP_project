@@ -5,12 +5,19 @@ import SignUp from './pages/SignUp.vue'
 import Chat from './pages/Chat.vue'
 import Settings from './pages/Settings.vue'
 import RecipeGenerator from './pages/RecipeGenerator.vue'
+import MealPlanning from './pages/MealPlanning.vue'
 
-type Page = 'login' | 'signup' | 'chat' | 'settings' | 'recipes'
+type Page = 'login' | 'signup' | 'chat' | 'settings' | 'recipes' | 'mealPlanning'
 
 const currentPage = ref<Page>('login')
 const isAuthenticated = ref(false)
-const user = ref<{ id: number; name: string; email: string } | null>(null)
+const user = ref<{
+  id: number
+  name: string
+  email: string
+  subscriptionType?: 'free' | 'premium'
+  mealPlanGenerationsUsed?: number
+} | null>(null)
 
 const goToSignUp = () => currentPage.value = 'signup'
 const goToLogin = () => currentPage.value = 'login'
@@ -27,13 +34,25 @@ const resetThemeToDefaults = () => {
   root.style.setProperty('--accent-color', '#ff6b6b')
 }
 
-const handleLoginSuccess = (userData: { id: number; name: string; email: string }) => {
+const handleLoginSuccess = (userData: {
+  id: number
+  name: string
+  email: string
+  subscriptionType?: 'free' | 'premium'
+  mealPlanGenerationsUsed?: number
+}) => {
   user.value = userData
   isAuthenticated.value = true
   currentPage.value = 'chat'
 }
 
-const handleSignUpSuccess = (userData: { id: number; name: string; email: string }) => {
+const handleSignUpSuccess = (userData: {
+  id: number
+  name: string
+  email: string
+  subscriptionType?: 'free' | 'premium'
+  mealPlanGenerationsUsed?: number
+}) => {
   user.value = userData
   isAuthenticated.value = true
   currentPage.value = 'chat'
@@ -70,6 +89,12 @@ const handleLogout = () => {
           🍳 Recipe Generator
         </button>
         <button 
+          :class="['nav-btn', { active: currentPage === 'mealPlanning' }]"
+          @click="currentPage = 'mealPlanning'"
+        >
+          Meal Planning
+        </button>
+        <button 
           :class="['nav-btn', { active: currentPage === 'settings' }]"
           @click="currentPage = 'settings'"
         >
@@ -87,6 +112,7 @@ const handleLogout = () => {
         @logout="handleLogout"
       />
       <RecipeGenerator v-show="currentPage === 'recipes'" :user="user!" />
+      <MealPlanning v-show="currentPage === 'mealPlanning'" :user="user!" />
       <Settings 
         v-show="currentPage === 'settings'" 
         :user="user!" 

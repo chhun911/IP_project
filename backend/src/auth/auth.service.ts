@@ -78,7 +78,13 @@ export class AuthService {
 
     return {
       success: true,
-      data: { id: user.id, name: user.name, email: user.email },
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        subscriptionType: user.subscription_type || 'free',
+        mealPlanGenerationsUsed: user.meal_plan_generations_used ?? 0,
+      },
     };
   }
 
@@ -103,7 +109,13 @@ export class AuthService {
 
     return {
       success: true,
-      data: { id: user.id, name: user.name, email: user.email },
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        subscriptionType: user.subscription_type || 'free',
+        mealPlanGenerationsUsed: user.meal_plan_generations_used ?? 0,
+      },
     };
   }
 
@@ -115,6 +127,25 @@ export class AuthService {
         used: count,
         limit: 5,
         remaining: Math.max(0, 5 - count),
+      },
+    };
+  }
+
+  async getMealPlanUsage(userId: number) {
+    if (!userId || Number.isNaN(userId)) {
+      throw new BadRequestException('Valid userId is required');
+    }
+
+    const usage = await this.userDb.getMealPlanUsage(userId);
+    const limit = usage.subscriptionType === 'premium' ? null : 2;
+
+    return {
+      success: true,
+      data: {
+        subscriptionType: usage.subscriptionType,
+        used: usage.used,
+        limit,
+        remaining: limit === null ? null : Math.max(0, limit - usage.used),
       },
     };
   }

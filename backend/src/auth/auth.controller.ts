@@ -22,4 +22,10 @@ export class AuthController {
   async getImageUsage(@Query('userId') userId: string) {
     return this.authService.getImageUsage(parseInt(userId, 10));
   }
+
+  @Get('meal-plan-usage')
+  @HttpCode(HttpStatus.OK)
+  async getMealPlanUsage(@Query('userId') userId: string) {
+    return this.authService.getMealPlanUsage(parseInt(userId, 10));
+  }
 }

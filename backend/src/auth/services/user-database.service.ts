@@ -7,6 +7,8 @@ export interface UserRow {
   email: string;
   password_hash: string;
   image_generation_count: number;
+  subscription_type: 'free' | 'premium';
+  meal_plan_generations_used: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -63,14 +65,22 @@ export class UserDatabaseService implements OnModuleInit, OnModuleDestroy {
           email VARCHAR(255) UNIQUE NOT NULL,
           password_hash VARCHAR(200) NOT NULL,
           image_generation_count INTEGER DEFAULT 0,
+          subscription_type VARCHAR(20) DEFAULT 'free',
+          meal_plan_generations_used INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
 
-      // Add image_generation_count column if it doesn't exist (for existing tables)
+      // Add usage/subscription columns if they don't exist (for existing tables)
       await client.query(`
         ALTER TABLE users ADD COLUMN IF NOT EXISTS image_generation_count INTEGER DEFAULT 0;
+      `);
+      await client.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_type VARCHAR(20) DEFAULT 'free';
+      `);
+      await client.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS meal_plan_generations_used INTEGER DEFAULT 0;
       `);
 
       await client.query(`
@@ -144,5 +154,43 @@ export class UserDatabaseService implements OnModuleInit, OnModuleDestroy {
       [userId],
     );
     return result.rows[0]?.image_generation_count ?? 0;
+  }
+
+  /**
+   * Get subscription and meal plan generation usage for a user.
+   */
+  async getMealPlanUsage(userId: number): Promise<{
+    subscriptionType: 'free' | 'premium';
+    used: number;
+  }> {
+    const result = await this.pool.query<{
+      subscription_type: 'free' | 'premium';
+      meal_plan_generations_used: number;
+    }>(
+      `SELECT subscription_type, meal_plan_generations_used
+       FROM users
+       WHERE id = $1`,
+      [userId],
+    );
+
+    return {
+      subscriptionType: result.rows[0]?.subscription_type || 'free',
+      used: result.rows[0]?.meal_plan_generations_used ?? 0,
+    };
+  }
+
+  /**
+   * Increment the meal plan generation count for a user. Returns the new count.
+   */
+  async incrementMealPlanGenerationCount(userId: number): Promise<number> {
+    const result = await this.pool.query<{ meal_plan_generations_used: number }>(
+      `UPDATE users
+       SET meal_plan_generations_used = meal_plan_generations_used + 1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING meal_plan_generations_used`,
+      [userId],
+    );
+    return result.rows[0]?.meal_plan_generations_used ?? 0;
   }
 }
